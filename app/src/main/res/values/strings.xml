@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Novel Reader</string>
+    <!-- launcher label -->
+    <string name="app_name_short">Novel</string>
+</resources>
