@@ -94,8 +94,8 @@ class DownloadStore(context: Context) {
     }
 
     /**
-     * Download all chapters sequentially. [onProgress] called on background thread.
-     * Returns final entry.
+     * Download all chapters sequentially.
+     * [onProgress] is always invoked on Main (safe for Compose state).
      */
     suspend fun downloadAll(
         source: NovelSource,
@@ -110,10 +110,14 @@ class DownloadStore(context: Context) {
         // save meta first
         saveMeta(detail)
 
+        suspend fun progress(done: Int, total: Int, name: String) {
+            withContext(Dispatchers.Main) { onProgress(done, total, name) }
+        }
+
         var done = 0
         val total = detail.chapters.size
         for (ch in detail.chapters) {
-            onProgress(done, total, ch.name)
+            progress(done, total, ch.name)
             val cf = chapterFile(novel.sourceId, novel.path, ch.path)
             if (!cf.exists() || cf.length() < 20) {
                 try {
@@ -126,7 +130,7 @@ class DownloadStore(context: Context) {
                 }
             }
             done++
-            onProgress(done, total, ch.name)
+            progress(done, total, ch.name)
         }
 
         val downloaded = detail.chapters.count {

@@ -153,13 +153,24 @@ fun AppNav(app: NovelApp) {
                     navArgument("novelTitle") { type = NavType.StringType },
                 ),
             ) { entry ->
+                val srcId = dec(entry.arguments!!.getString("sourceId")!!)
+                val novPath = dec(entry.arguments!!.getString("novelPath")!!)
                 ReaderScreen(
                     app = app,
-                    sourceId = dec(entry.arguments!!.getString("sourceId")!!),
-                    novelPath = dec(entry.arguments!!.getString("novelPath")!!),
+                    sourceId = srcId,
+                    novelPath = novPath,
                     chapterPath = dec(entry.arguments!!.getString("chapterPath")!!),
                     novelTitle = dec(entry.arguments!!.getString("novelTitle")!!),
                     onBack = { nav.popBackStack() },
+                    onOpenChapter = { targetChapterPath, title ->
+                        nav.navigate(
+                            "reader/${enc(srcId)}/${enc(novPath)}/${enc(targetChapterPath)}/${enc(title)}",
+                        ) {
+                            popUpTo("reader/{sourceId}/{novelPath}/{chapterPath}/{novelTitle}") {
+                                inclusive = true
+                            }
+                        }
+                    },
                     onOpenCf = { siteUrl ->
                         nav.navigate("cf/${enc(siteUrl)}")
                     },

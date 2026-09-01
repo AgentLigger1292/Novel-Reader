@@ -10,6 +10,7 @@ import com.novelreader.network.HttpClient
 import com.novelreader.source.BacaLightNovelSource
 import com.novelreader.source.DummySource
 import com.novelreader.source.NovelSource
+import com.novelreader.source.SakuraNovelSource
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -25,7 +26,8 @@ class NovelApp : Application(), ImageLoaderFactory {
     val sources: Map<String, NovelSource> by lazy {
         val dummy = DummySource()
         val baca = BacaLightNovelSource(http)
-        mapOf(dummy.id to dummy, baca.id to baca)
+        val sakura = SakuraNovelSource(http)
+        mapOf(dummy.id to dummy, baca.id to baca, sakura.id to sakura)
     }
 
     var selectedSourceId: String = "bacalightnovel"

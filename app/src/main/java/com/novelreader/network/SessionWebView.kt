@@ -5,7 +5,6 @@ import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
-import android.webkit.CookieManager
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import java.util.concurrent.CountDownLatch
@@ -13,7 +12,11 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 import java.util.concurrent.locks.ReentrantLock
-import kotlin.concurrent.withLock
+
+/** Thrown when another fetch still holds the single WebView. */
+class SessionBusyException : Exception(
+    "Jaringan sibuk — tunggu sebentar lalu coba lagi (satu request WebView sekaligus).",
+)
 
 /**
  * One long-lived WebView shared after the user clears CF.
@@ -25,21 +28,24 @@ object SessionWebView {
     private var webView: WebView? = null
     private val fetchLock = ReentrantLock(true)
 
+    // cancel in-flight grab callbacks after timeout / adopt
+    private val generation = java.util.concurrent.atomic.AtomicInteger(0)
+
     fun adopt(wv: WebView) {
         main.post {
             if (webView === wv) return@post
-            // do not destroy old while a fetch may still hold it — just switch pointer
+            generation.incrementAndGet() // drop stale callbacks
+            // ponytail: keep old WebView if locked; GC later — destroy risk mid-fetch
             webView = wv
             Log.i(TAG, "SessionWebView adopted")
         }
     }
 
-    /** For cover fetch — may be null before CF Done. */
     fun webViewOrNull(): WebView? = webView
 
     @SuppressLint("SetJavaScriptEnabled")
     fun ensure(context: Context) {
-        // optional placeholder; real session comes from CF screen adopt()
+        // real session comes from CF screen adopt()
     }
 
     fun getHtml(url: String, timeoutSec: Long = 55): String {
@@ -48,10 +54,9 @@ object SessionWebView {
         }
     }
 
-    /** Shared lock for HTML + cover downloads on the same WebView. */
     fun <T> withFetchLock(timeoutSec: Long, block: () -> T): T {
         if (!fetchLock.tryLock(timeoutSec, TimeUnit.SECONDS)) {
-            throw IllegalStateException("Session WebView busy")
+            throw SessionBusyException()
         }
         try {
             return block()
@@ -65,6 +70,7 @@ object SessionWebView {
         val result = AtomicReference<String?>(null)
         val error = AtomicReference<String?>(null)
         val done = AtomicBoolean(false)
+        val gen = generation.get()
 
         fun complete(html: String?, err: String?) {
             if (!done.compareAndSet(false, true)) return
@@ -73,6 +79,10 @@ object SessionWebView {
         }
 
         main.post {
+            if (generation.get() != gen) {
+                complete(null, "session replaced")
+                return@post
+            }
             val wv = webView
             if (wv == null) {
                 complete(null, "No session WebView — open CF first")
@@ -80,25 +90,39 @@ object SessionWebView {
             }
             try {
                 fun grab(attempt: Int) {
-                    if (done.get()) return
+                    if (done.get() || generation.get() != gen) return
+                    // Include <title> + body so Jsoup can parse titles/chapters (body-only broke Sakura)
                     wv.evaluateJavascript(
-                        "(function(){return JSON.stringify({t:document.title,u:location.href,h:document.documentElement.outerHTML});})();",
+                        """
+                        (function(){
+                          var t=document.title||'';
+                          var u=location.href||'';
+                          var body=(document.body&&document.body.innerHTML)||'';
+                          var h='<!DOCTYPE html><html><head><title>'+t.replace(/</g,'')+
+                            '</title></head><body>'+body+'</body></html>';
+                          return JSON.stringify({t:t,u:u,h:h});
+                        })();
+                        """.trimIndent(),
                     ) { json ->
-                        if (done.get()) return@evaluateJavascript
+                        if (done.get() || generation.get() != gen) return@evaluateJavascript
                         val (title, pageUrl, html) = parse(json)
                         Log.i(TAG, "sess poll#$attempt title=$title url=$pageUrl len=${html.length}")
                         when {
                             isChallenge(title, html) -> {
                                 if (attempt >= 18) complete(null, "CF")
-                                else main.postDelayed({ grab(attempt + 1) }, 1200)
+                                else main.postDelayed({ grab(attempt + 1) }, 900)
                             }
                             html.length < 800 -> {
                                 if (attempt >= 12) complete(null, "Empty")
-                                else main.postDelayed({ grab(attempt + 1) }, 800)
+                                else main.postDelayed({ grab(attempt + 1) }, 600)
                             }
-                            // still on wrong page (e.g. search not navigated yet)
-                            pageUrl.isNotBlank() && !sameUrl(pageUrl, url) && attempt < 8 -> {
-                                main.postDelayed({ grab(attempt + 1) }, 700)
+                            pageUrl.isNotBlank() && !sameUrl(pageUrl, url) -> {
+                                if (attempt >= 12) {
+                                    complete(null, "Wrong page $pageUrl")
+                                } else {
+                                    wv.loadUrl(url)
+                                    main.postDelayed({ grab(attempt + 1) }, 700)
+                                }
                             }
                             else -> complete(html, null)
                         }
@@ -107,14 +131,13 @@ object SessionWebView {
 
                 wv.webViewClient = object : WebViewClient() {
                     override fun onPageFinished(view: WebView, finishedUrl: String) {
-                        if (done.get()) return
+                        if (done.get() || generation.get() != gen) return
                         Log.i(TAG, "sess finished $finishedUrl")
-                        main.postDelayed({ grab(0) }, 500)
+                        main.postDelayed({ grab(0) }, 400)
                     }
                 }
                 Log.i(TAG, "sess load $url")
                 val cur = wv.url
-                // must include query (?s=...) — path-only match broke search
                 if (cur != null && sameUrl(cur, url)) {
                     grab(0)
                 } else {
@@ -126,6 +149,16 @@ object SessionWebView {
         }
 
         if (!latch.await(timeoutSec, TimeUnit.SECONDS)) {
+            // stop late callbacks from completing after unlock
+            done.set(true)
+            generation.incrementAndGet()
+            main.post {
+                try {
+                    webView?.stopLoading()
+                } catch (_: Exception) {
+                }
+            }
+            Log.w(TAG, "sess timeout $url — cancelled in-flight")
             throw IllegalStateException("Session WebView timeout $url")
         }
         if (error.get() == "CF") throw CfChallengeException(siteOf(url))
@@ -133,7 +166,6 @@ object SessionWebView {
         return result.get() ?: throw IllegalStateException("Empty body")
     }
 
-    /** Host + path + query (search params matter). */
     private fun sameUrl(a: String, b: String): Boolean = try {
         val ua = java.net.URI(a.replace(" ", "%20"))
         val ub = java.net.URI(b.replace(" ", "%20"))

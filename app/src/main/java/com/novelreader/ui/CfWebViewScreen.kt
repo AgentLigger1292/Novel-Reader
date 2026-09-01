@@ -1,6 +1,8 @@
 package com.novelreader.ui
 
 import android.annotation.SuppressLint
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import android.view.ViewGroup
 import android.webkit.CookieManager
@@ -25,11 +27,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import com.novelreader.network.CloudFlareDetection
 import com.novelreader.network.SessionWebView
+import com.novelreader.network.SharedCookies
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * User clears Cloudflare manually. The same WebView is adopted as the session
- * fetcher so later requests do not open a new challenged WebView.
+ * Manual CF clear (Kotatsu-style detection).
+ * When JS probe returns "ok" (main site), auto-finish without tapping Done.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @SuppressLint("SetJavaScriptEnabled")
@@ -40,46 +45,80 @@ fun CfWebViewScreen(
     onBack: () -> Unit,
 ) {
     val startUrl = remember(siteUrl) { siteUrl }
-    var status by remember { mutableStateOf("Loading…") }
+    var status by remember { mutableStateOf("Memuat…") }
     var webRef by remember { mutableStateOf<WebView?>(null) }
+    val finished = remember { AtomicBoolean(false) }
+    val mainHandler = remember { Handler(Looper.getMainLooper()) }
+    val probeRunnable = remember { arrayOfNulls<Runnable>(1) }
 
-    fun finish() {
-        val cm = CookieManager.getInstance()
-        cm.flush()
+    fun finish(auto: Boolean) {
+        if (!finished.compareAndSet(false, true)) return
+        probeRunnable[0]?.let { mainHandler.removeCallbacks(it) }
+        CookieManager.getInstance().flush()
+        SharedCookies.jar.flush()
         webRef?.let { SessionWebView.adopt(it) }
-        val cookies = cm.getCookie(siteUrl)
-            ?: cm.getCookie("https://bacalightnovel.co/")
-            ?: cm.getCookie("http://bacalightnovel.co/")
+        val cookies = SharedCookies.jar.rawCookie(siteUrl)
+            ?: SharedCookies.jar.rawCookie("https://bacalightnovel.co/")
         Log.i(
             "BLN",
-            "CF Done title=${webRef?.title} hasClearance=${cookies?.contains("cf_clearance") == true} cookies=${cookies?.take(120)}",
+            "CF Done auto=$auto title=${webRef?.title} " +
+                "hasClearance=${cookies?.contains("cf_clearance") == true} " +
+                "cookies=${cookies?.take(140)}",
         )
-        // detach from compose parent so SessionWebView can keep using it
-        webRef?.let { wv ->
-            (wv.parent as? ViewGroup)?.removeView(wv)
-        }
+        webRef?.let { wv -> (wv.parent as? ViewGroup)?.removeView(wv) }
         onDone()
+    }
+
+    fun probe(view: WebView) {
+        if (finished.get()) return
+        view.evaluateJavascript(CloudFlareDetection.STATE_JS) { raw ->
+            if (finished.get()) return@evaluateJavascript
+            val state = CloudFlareDetection.unwrapJsString(raw)
+            val title = view.title.orEmpty()
+            Log.i("BLN", "CF probe state=$state title=$title")
+            when (state) {
+                "ok" -> {
+                    status = "Situs OK — masuk otomatis…"
+                    // Kotatsu: brief delay so cookies settle after challenge
+                    mainHandler.postDelayed({ finish(auto = true) }, 800)
+                }
+                "error" -> {
+                    status = "Diblokir server. Coba ulang / ganti jaringan."
+                }
+                else -> {
+                    status = "Menunggu challenge… ($title)"
+                    // keep polling while challenge runs
+                    val r = Runnable { probe(view) }
+                    probeRunnable[0] = r
+                    mainHandler.postDelayed(r, 900)
+                }
+            }
+        }
     }
 
     Column(Modifier.fillMaxSize()) {
         TopAppBar(
-            title = { Text("Clear CF challenge") },
+            title = { Text("Cloudflare") },
             navigationIcon = {
-                IconButton(onClick = onBack) {
+                IconButton(onClick = {
+                    probeRunnable[0]?.let { mainHandler.removeCallbacks(it) }
+                    onBack()
+                }) {
                     Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back")
                 }
             },
             actions = {
                 Button(
-                    onClick = { finish() },
+                    onClick = { finish(auto = false) },
                     modifier = Modifier.padding(end = 8.dp),
+                    enabled = !finished.get(),
                 ) {
                     Text("Done")
                 }
             },
         )
         Text(
-            "Selesaikan sampai judul situs normal (bukan “Tunggu sebentar”), lalu Done.\n$status",
+            "Selesaikan challenge jika diminta. Setelah halaman utama muncul, app lanjut otomatis.\n$status",
             Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
         )
         AndroidView(
@@ -93,9 +132,12 @@ fun CfWebViewScreen(
                     CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
                     webViewClient = object : WebViewClient() {
                         override fun onPageFinished(view: WebView?, url: String?) {
-                            val title = view?.title.orEmpty()
-                            status = "Page: ${title.take(48)}"
-                            Log.i("BLN", "CF pageFinished url=$url title=$title")
+                            if (view == null || finished.get()) return
+                            Log.i("BLN", "CF pageFinished url=$url title=${view.title}")
+                            SessionWebView.adopt(view)
+                            // start / restart probe loop (Kotatsu-style)
+                            probeRunnable[0]?.let { mainHandler.removeCallbacks(it) }
+                            probe(view)
                         }
                     }
                     webRef = this

@@ -2,12 +2,7 @@ package com.novelreader.network
 
 import android.content.Context
 import android.util.Log
-import android.webkit.CookieManager
-import okhttp3.Cookie
-import okhttp3.CookieJar
 import okhttp3.FormBody
-import okhttp3.HttpUrl
-import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.jsoup.Jsoup
@@ -16,35 +11,9 @@ import java.util.concurrent.TimeUnit
 
 class CfChallengeException(val siteUrl: String) : Exception("Cloudflare challenge — open site in WebView and clear it manually")
 
-class WebViewCookieJar : CookieJar {
-    private fun cm(): CookieManager =
-        CookieManager.getInstance().also { it.setAcceptCookie(true) }
-
-    override fun saveFromResponse(url: HttpUrl, cookies: List<Cookie>) {
-        val manager = cm()
-        cookies.forEach { c -> manager.setCookie(url.toString(), c.toString()) }
-        manager.flush()
-    }
-
-    override fun loadForRequest(url: HttpUrl): List<Cookie> {
-        val manager = cm()
-        val hosts = listOf(
-            url.toString(),
-            "${url.scheme}://${url.host}/",
-            "https://${url.host}/",
-        )
-        return hosts.mapNotNull { manager.getCookie(it) }
-            .flatMap { it.split(";") }
-            .map { it.trim() }
-            .filter { it.isNotEmpty() }
-            .distinct()
-            .mapNotNull { Cookie.parse(url, it) }
-    }
-}
-
 /**
  * Prefer SessionWebView (same instance that cleared CF).
- * OkHttp only for ajax POST after session is warm.
+ * OkHttp uses [AndroidCookieJar] (Kotatsu pattern) for ajax + fallback.
  */
 class HttpClient(context: Context) {
     private val appContext = context.applicationContext
@@ -55,7 +24,7 @@ class HttpClient(context: Context) {
 
     private val client by lazy {
         OkHttpClient.Builder()
-            .cookieJar(WebViewCookieJar())
+            .cookieJar(SharedCookies.jar)
             .connectTimeout(30, TimeUnit.SECONDS)
             .readTimeout(45, TimeUnit.SECONDS)
             .followRedirects(true)
@@ -66,20 +35,23 @@ class HttpClient(context: Context) {
         "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
 
     fun getHtml(url: String): String {
-        Log.i(TAG, "getHtml session $url")
         return try {
-            SessionWebView.getHtml(url)
+            val html = getHtmlOkHttp(url)
+            Log.i(TAG, "getHtml OkHttp fast-path success $url len=${html.length}")
+            html
         } catch (e: CfChallengeException) {
-            throw e
+            Log.i(TAG, "OkHttp hit CF challenge, falling back to SessionWebView for $url")
+            SessionWebView.getHtml(url)
         } catch (e: Exception) {
-            Log.w(TAG, "session fail ${e.message}, try OkHttp")
-            getHtmlOkHttp(url)
+            Log.w(TAG, "OkHttp fail ${e.message}, fallback to SessionWebView for $url")
+            SessionWebView.getHtml(url)
         }
     }
 
     fun getDocument(url: String): Document = Jsoup.parse(getHtml(url), url)
 
     fun postForm(url: String, body: FormBody, referer: String? = null): String {
+        SharedCookies.jar.flush()
         val req = Request.Builder()
             .url(url)
             .post(body)
@@ -87,7 +59,7 @@ class HttpClient(context: Context) {
             .header("Accept", "*/*")
             .header("X-Requested-With", "XMLHttpRequest")
             .header("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8")
-            .apply { if (referer != null) header("Referer", referer) }
+            .apply { header("Referer", referer ?: siteOf(url)) }
             .build()
         Log.i(TAG, "POST $url")
         client.newCall(req).execute().use { res ->
@@ -99,21 +71,29 @@ class HttpClient(context: Context) {
     }
 
     private fun getHtmlOkHttp(url: String): String {
+        SharedCookies.jar.flush()
         val req = Request.Builder()
             .url(url)
             .header("User-Agent", ua)
-            .header("Accept", "text/html,application/xhtml+xml")
-            .header("Referer", "https://bacalightnovel.co/")
+            .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+            .header("Referer", siteOf(url))
             .build()
         client.newCall(req).execute().use { res ->
             val body = res.body?.string().orEmpty()
             Log.i(TAG, "OkHttp ${res.code} len=${body.length}")
             if (looksLikeCf(res.code, body)) {
-                throw CfChallengeException("https://bacalightnovel.co")
+                throw CfChallengeException(siteOf(url))
             }
             if (!res.isSuccessful) throw IllegalStateException("HTTP ${res.code}")
             return body
         }
+    }
+
+    private fun siteOf(url: String): String = try {
+        val u = java.net.URI(url)
+        "${u.scheme}://${u.host}/"
+    } catch (_: Exception) {
+        "https://bacalightnovel.co/"
     }
 
     private fun looksLikeCf(code: Int, body: String): Boolean {
@@ -125,4 +105,9 @@ class HttpClient(context: Context) {
     companion object {
         private const val TAG = "BLN"
     }
+}
+
+/** App-wide cookie jar (WebView + OkHttp + Coil). */
+object SharedCookies {
+    val jar = AndroidCookieJar()
 }

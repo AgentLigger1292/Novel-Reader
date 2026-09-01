@@ -94,6 +94,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import com.novelreader.network.SessionBusyException
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -137,7 +138,7 @@ fun BrowseScreen(
                     "Tidak ketemu untuk \"$q\". Coba kata lain / pastikan CF sudah Done."
                 }
             } else if (novels.isNotEmpty()) {
-                // download covers with CF cookies (serial), refresh UI as each lands
+                // after CF cookies exist: OkHttp then WebView fallback; refresh grid as each lands
                 CoverLoader.prefetch(
                     context,
                     novels.map { it.coverUrl },
@@ -148,9 +149,19 @@ fun BrowseScreen(
         } catch (e: CfChallengeException) {
             novels = emptyList()
             error = "Cloudflare: buka CF, selesaikan challenge, tap Done, lalu refresh."
+        } catch (e: SessionBusyException) {
+            novels = emptyList()
+            error = e.message
         } catch (e: Exception) {
             novels = emptyList()
-            error = e.message ?: e.toString()
+            val msg = e.message.orEmpty()
+            error = when {
+                msg.contains("busy", ignoreCase = true) ->
+                    "Jaringan sibuk — tunggu sebentar lalu refresh."
+                msg.contains("timeout", ignoreCase = true) ->
+                    "Timeout. Pastikan CF Done, lalu refresh."
+                else -> msg.ifBlank { e.toString() }
+            }
             android.util.Log.e("BLN", "browse error", e)
         } finally {
             loading = false
@@ -424,7 +435,13 @@ fun NovelDetailScreen(
 
     LaunchedEffect(sourceId, path, preferOffline) {
         error = null
-        loading = true
+        val cached = com.novelreader.data.NovelCache.getDetail(key)
+        if (cached != null) {
+            detail = cached
+            loading = false
+        } else {
+            loading = true
+        }
         try {
             val offline = withContext(Dispatchers.IO) {
                 app.downloads.readNovelDetail(sourceId, path)
@@ -433,20 +450,24 @@ fun NovelDetailScreen(
                 detail = offline
             } else {
                 try {
-                    detail = withContext(Dispatchers.IO) { source.getNovel(path) }
+                    val fresh = withContext(Dispatchers.IO) { source.getNovel(path) }
+                    detail = fresh
+                    com.novelreader.data.NovelCache.putDetail(key, fresh)
                 } catch (e: Exception) {
                     if (offline != null) {
                         detail = offline
-                    } else {
+                    } else if (cached == null) {
                         throw e
                     }
                 }
             }
             inLib = app.store.isInLibrary(key)
         } catch (e: CfChallengeException) {
-            error = "Cloudflare challenge"
+            if (detail == null) error = "Cloudflare challenge"
+        } catch (e: SessionBusyException) {
+            if (detail == null) error = e.message
         } catch (e: Exception) {
-            error = e.message ?: e.toString()
+            if (detail == null) error = e.message ?: e.toString()
         } finally {
             loading = false
         }
@@ -486,12 +507,10 @@ fun NovelDetailScreen(
                             dlDone = 0
                             dlTotal = d.chapters.size
                             try {
-                                withContext(Dispatchers.IO) {
-                                    app.downloads.downloadAll(source, d) { done, total, name ->
-                                        dlDone = done
-                                        dlTotal = total
-                                        dlChapter = name
-                                    }
+                                app.downloads.downloadAll(source, d) { done, total, name ->
+                                    dlDone = done
+                                    dlTotal = total
+                                    dlChapter = name
                                 }
                             } catch (e: Exception) {
                                 error = "Download gagal: ${e.message}"
@@ -714,6 +733,7 @@ fun ReaderScreen(
     chapterPath: String,
     novelTitle: String,
     onBack: () -> Unit,
+    onOpenChapter: (chapterPath: String, novelTitle: String) -> Unit = { _, _ -> },
     onOpenCf: (String) -> Unit,
 ) {
     var paragraphs by remember { mutableStateOf(listOf("Loading…")) }
@@ -721,6 +741,8 @@ fun ReaderScreen(
     var fontSp by remember { mutableFloatStateOf(18f) }
     var lineMul by remember { mutableFloatStateOf(1.7f) }
     var bgMode by remember { mutableStateOf(ReaderBg.Dark) }
+    var fontType by remember { mutableStateOf(ReaderFontType.Serif) }
+    var alignJustify by remember { mutableStateOf(true) }
     var showSettings by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var loading by remember { mutableStateOf(true) }
@@ -743,25 +765,24 @@ fun ReaderScreen(
 
     LaunchedEffect(sourceId, chapterPath) {
         error = null
-        loading = true
-        paragraphs = listOf("Memuat chapter…")
+        val memCached = com.novelreader.data.NovelCache.getChapter(chapterPath)
+        if (memCached != null) {
+            paragraphs = htmlToParagraphs(memCached)
+            loading = false
+        } else {
+            loading = true
+            paragraphs = listOf("Memuat chapter…")
+        }
         try {
             val content = withContext(Dispatchers.IO) {
-                // prefer offline download
                 val offline = app.downloads.readChapterHtml(sourceId, novelPath, chapterPath)
                 val body = if (!offline.isNullOrBlank()) {
                     offline
+                } else if (memCached != null) {
+                    memCached
                 } else {
                     val html = source.getChapterContent(chapterPath)
-                    // auto-cache for next time
-                    runCatching {
-                        // lightweight: if novel meta exists, store this chapter too
-                        if (app.downloads.getEntry(sourceId, novelPath) != null ||
-                            app.downloads.readNovelDetail(sourceId, novelPath) != null
-                        ) {
-                            // re-use downloadAll path by writing via internal — skip if no meta
-                        }
-                    }
+                    com.novelreader.data.NovelCache.putChapter(chapterPath, html)
                     html
                 }
                 htmlToParagraphs(body) to (!offline.isNullOrBlank())
@@ -772,7 +793,6 @@ fun ReaderScreen(
             } else {
                 novelTitle.ifBlank { "Chapter" }
             }
-            // if online fetch succeeded and we have no offline copy, still record history
             app.store.upsertHistory(
                 HistoryEntity(
                     key = histKey,
@@ -783,6 +803,22 @@ fun ReaderScreen(
                     chapterName = novelTitle.ifBlank { "Chapter" },
                 ),
             )
+            // Pre-fetch next chapter in background for instant reading
+            val cachedDetail = com.novelreader.data.NovelCache.getDetail(histKey)
+            if (cachedDetail != null) {
+                val idx = cachedDetail.chapters.indexOfFirst { it.path == chapterPath }
+                if (idx >= 0 && idx + 1 < cachedDetail.chapters.size) {
+                    val nextChapterPath = cachedDetail.chapters[idx + 1].path
+                    if (com.novelreader.data.NovelCache.getChapter(nextChapterPath) == null) {
+                        withContext(Dispatchers.IO) {
+                            runCatching {
+                                val nextHtml = source.getChapterContent(nextChapterPath)
+                                com.novelreader.data.NovelCache.putChapter(nextChapterPath, nextHtml)
+                            }
+                        }
+                    }
+                }
+            }
         } catch (e: CfChallengeException) {
             // try offline only
             val offline = withContext(Dispatchers.IO) {
@@ -913,9 +949,9 @@ fun ReaderScreen(
                             color = pal.text,
                             fontSize = fontSp.sp,
                             lineHeight = (fontSp * lineMul).sp,
-                            fontFamily = ReaderSerif,
+                            fontFamily = fontType.fontFamily,
                             letterSpacing = 0.15.sp,
-                            textAlign = TextAlign.Justify,
+                            textAlign = if (alignJustify) TextAlign.Justify else TextAlign.Left,
                             style = MaterialTheme.typography.bodyLarge,
                         )
                     }
@@ -928,6 +964,36 @@ fun ReaderScreen(
                             textAlign = TextAlign.Center,
                             style = MaterialTheme.typography.labelMedium,
                         )
+                        Spacer(Modifier.height(16.dp))
+                        
+                        val cachedDetail = com.novelreader.data.NovelCache.getDetail(histKey)
+                        val chapterIndex = cachedDetail?.chapters?.indexOfFirst { it.path == chapterPath } ?: -1
+                        val prevChapter = if (chapterIndex > 0) cachedDetail?.chapters?.get(chapterIndex - 1) else null
+                        val nextChapter = if (chapterIndex >= 0 && chapterIndex + 1 < (cachedDetail?.chapters?.size ?: 0)) cachedDetail?.chapters?.get(chapterIndex + 1) else null
+
+                        if (prevChapter != null || nextChapter != null) {
+                            Row(
+                                Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            ) {
+                                if (prevChapter != null) {
+                                    OutlinedButton(
+                                        onClick = { onOpenChapter(prevChapter.path, novelTitle) },
+                                        modifier = Modifier.weight(1f),
+                                    ) {
+                                        Text("← Bab Sebelumnya", maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    }
+                                }
+                                if (nextChapter != null) {
+                                    Button(
+                                        onClick = { onOpenChapter(nextChapter.path, novelTitle) },
+                                        modifier = Modifier.weight(1f),
+                                    ) {
+                                        Text("Bab Selanjutnya →", maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -944,49 +1010,103 @@ fun ReaderScreen(
                         .fillMaxWidth()
                         .padding(horizontal = 20.dp)
                         .padding(bottom = 32.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp),
                 ) {
                     Text(
-                        "Tampilan baca",
+                        "Pengaturan Tampilan Baca",
                         style = MaterialTheme.typography.titleMedium,
                         color = pal.text,
                     )
 
-                    Text("Tema", color = pal.muted, style = MaterialTheme.typography.labelLarge)
+                    Text("Tema Latar", color = pal.muted, style = MaterialTheme.typography.labelLarge)
                     Row(
                         Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         ReaderBg.entries.forEach { mode ->
                             val p = palette(mode)
                             val selected = bgMode == mode
                             Surface(
                                 onClick = { bgMode = mode },
-                                shape = RoundedCornerShape(12.dp),
+                                shape = RoundedCornerShape(10.dp),
                                 color = p.bg,
                                 border = BorderStroke(
                                     width = if (selected) 2.dp else 1.dp,
-                                    color = if (selected) pal.accent else pal.muted.copy(alpha = 0.35f),
+                                    color = if (selected) pal.accent else pal.muted.copy(alpha = 0.3f),
                                 ),
-                                modifier = Modifier.weight(1f).height(52.dp),
+                                modifier = Modifier.weight(1f).height(46.dp),
                             ) {
                                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                                     Text(
                                         when (mode) {
                                             ReaderBg.Dark -> "Gelap"
+                                            ReaderBg.Oled -> "OLED"
+                                            ReaderBg.Nordic -> "Nordic"
                                             ReaderBg.Sepia -> "Sepia"
                                             ReaderBg.Light -> "Terang"
                                         },
                                         color = p.text,
-                                        style = MaterialTheme.typography.labelLarge,
+                                        style = MaterialTheme.typography.labelMedium,
                                     )
                                 }
                             }
                         }
                     }
 
+                    Text("Jenis Font", color = pal.muted, style = MaterialTheme.typography.labelLarge)
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        ReaderFontType.entries.forEach { font ->
+                            val selected = fontType == font
+                            OutlinedButton(
+                                onClick = { fontType = font },
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier.weight(1f),
+                                border = BorderStroke(
+                                    width = if (selected) 2.dp else 1.dp,
+                                    color = if (selected) pal.accent else pal.muted.copy(alpha = 0.3f),
+                                ),
+                            ) {
+                                Text(
+                                    font.label,
+                                    color = if (selected) pal.accent else pal.text,
+                                    fontFamily = font.fontFamily,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                        }
+                    }
+
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text("Rataan Teks", color = pal.muted, style = MaterialTheme.typography.labelLarge)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            TextButton(onClick = { alignJustify = true }) {
+                                Text(
+                                    "Justify (Kiri-Kanan)",
+                                    color = if (alignJustify) pal.accent else pal.muted,
+                                    style = MaterialTheme.typography.labelMedium,
+                                )
+                            }
+                            TextButton(onClick = { alignJustify = false }) {
+                                Text(
+                                    "Left (Rata Kiri)",
+                                    color = if (!alignJustify) pal.accent else pal.muted,
+                                    style = MaterialTheme.typography.labelMedium,
+                                )
+                            }
+                        }
+                    }
+
                     Text(
-                        "Ukuran font  ${fontSp.toInt()} sp",
+                        "Ukuran Font  ${fontSp.toInt()} sp",
                         color = pal.muted,
                         style = MaterialTheme.typography.labelLarge,
                     )
@@ -995,7 +1115,7 @@ fun ReaderScreen(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        Text("A", color = pal.text, fontSize = 14.sp, fontFamily = ReaderSerif)
+                        Text("A", color = pal.text, fontSize = 14.sp, fontFamily = fontType.fontFamily)
                         Slider(
                             value = fontSp,
                             onValueChange = { fontSp = it },
@@ -1008,11 +1128,11 @@ fun ReaderScreen(
                                 inactiveTrackColor = pal.muted.copy(alpha = 0.3f),
                             ),
                         )
-                        Text("A", color = pal.text, fontSize = 22.sp, fontFamily = ReaderSerif)
+                        Text("A", color = pal.text, fontSize = 22.sp, fontFamily = fontType.fontFamily)
                     }
 
                     Text(
-                        "Spasi baris  ${"%.1f".format(lineMul)}×",
+                        "Spasi Baris  ${"%.1f".format(lineMul)}×",
                         color = pal.muted,
                         style = MaterialTheme.typography.labelLarge,
                     )
@@ -1035,13 +1155,13 @@ fun ReaderScreen(
                         modifier = Modifier.fillMaxWidth(),
                     ) {
                         Text(
-                            "Pratinjau: huruf serif, rata kiri-kanan, nyaman dibaca lama.",
-                            Modifier.padding(16.dp),
+                            "Pratinjau: ${fontType.label}, ${if (alignJustify) "Rata Kiri-Kanan" else "Rata Kiri"}, nyaman dibaca.",
+                            Modifier.padding(14.dp),
                             color = pal.text,
                             fontSize = fontSp.sp,
                             lineHeight = (fontSp * lineMul).sp,
-                            fontFamily = ReaderSerif,
-                            textAlign = TextAlign.Justify,
+                            fontFamily = fontType.fontFamily,
+                            textAlign = if (alignJustify) TextAlign.Justify else TextAlign.Left,
                         )
                     }
                 }

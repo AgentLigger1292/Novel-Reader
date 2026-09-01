@@ -5,8 +5,16 @@ import androidx.compose.ui.text.font.FontFamily
 
 enum class ReaderBg {
     Dark,
+    Oled,
+    Nordic,
     Sepia,
     Light,
+}
+
+enum class ReaderFontType(val label: String, val fontFamily: FontFamily) {
+    Serif("Serif", FontFamily.Serif),
+    SansSerif("Sans-Serif", FontFamily.SansSerif),
+    Monospace("Monospace", FontFamily.Monospace),
 }
 
 data class ReaderPalette(
@@ -24,6 +32,20 @@ fun palette(bg: ReaderBg): ReaderPalette = when (bg) {
         text = Color(0xFFE8E6E3),
         muted = Color(0xFF9A968F),
         accent = Color(0xFF8AB4F8),
+    )
+    ReaderBg.Oled -> ReaderPalette(
+        bg = Color(0xFF000000),
+        surface = Color(0xFF121212),
+        text = Color(0xFFE0E0E0),
+        muted = Color(0xFF888888),
+        accent = Color(0xFFBB86FC),
+    )
+    ReaderBg.Nordic -> ReaderPalette(
+        bg = Color(0xFF16201D),
+        surface = Color(0xFF202C28),
+        text = Color(0xFFD5E0DC),
+        muted = Color(0xFF839992),
+        accent = Color(0xFF64B5F6),
     )
     ReaderBg.Sepia -> ReaderPalette(
         bg = Color(0xFFF4ECD8),
