@@ -62,7 +62,7 @@ class DownloadStore(context: Context) {
     fun saveChapterHtml(sourceId: String, novelPath: String, chapterPath: String, html: String) {
         if (html.isBlank()) return
         val dir = File(novelDir(sourceId, novelPath), "chapters").also { it.mkdirs() }
-        chapterFile(sourceId, novelPath, chapterPath).writeText(html)
+        atomicWriteText(chapterFile(sourceId, novelPath, chapterPath), html)
     }
 
     fun readNovelDetail(sourceId: String, novelPath: String): NovelDetail? {
@@ -116,21 +116,44 @@ class DownloadStore(context: Context) {
 
         var done = 0
         val total = detail.chapters.size
-        for (ch in detail.chapters) {
-            progress(done, total, ch.name)
-            val cf = chapterFile(novel.sourceId, novel.path, ch.path)
-            if (!cf.exists() || cf.length() < 20) {
-                try {
-                    val html = source.getChapterContent(ch.path)
-                    if (html.isNotBlank()) {
-                        cf.writeText(html)
+        // CF challenge pauses the batch (user clears it in WebView), it never cancels it:
+        // each pending chapter is retried up to cfRetries times before being skipped.
+        var pending = detail.chapters.toList()
+        var cfRetries = 0
+        while (pending.isNotEmpty()) {
+            val nextPass = ArrayList<Chapter>()
+            for (ch in pending) {
+                progress(done, total, ch.name)
+                val cf = chapterFile(novel.sourceId, novel.path, ch.path)
+                if (!cf.exists() || cf.length() < 20) {
+                    try {
+                        val html = source.getChapterContent(ch.path)
+                        if (html.isNotBlank()) {
+                            atomicWriteText(cf, html)
+                        }
+                    } catch (e: Exception) {
+                        Log.w(TAG, "dl fail ${ch.path}: ${e.message}")
+                        if (e is com.novelreader.network.CfChallengeException ||
+                            e is com.novelreader.network.SessionBusyException
+                        ) {
+                            nextPass.add(ch) // pause here — CF clears via UI, then we continue
+                        }
                     }
-                } catch (e: Exception) {
-                    Log.w(TAG, "dl fail ${ch.path}: ${e.message}")
                 }
+                done++
+                progress(done, total, ch.name)
             }
-            done++
-            progress(done, total, ch.name)
+            if (nextPass.size == pending.size) {
+                cfRetries++
+                if (cfRetries > 3) {
+                    Log.w(TAG, "download paused: CF not cleared after 3 passes, ${nextPass.size} skipped")
+                    break
+                }
+                Log.i(TAG, "CF pause ${cfRetries}/3 — ${nextPass.size} chapters deferred")
+            } else {
+                cfRetries = 0
+            }
+            pending = nextPass
         }
 
         val downloaded = detail.chapters.count {
@@ -177,7 +200,7 @@ class DownloadStore(context: Context) {
             .put("coverUrl", novel.coverUrl)
             .put("description", novel.description)
             .put("chapters", arr)
-        metaFile(novel.sourceId, novel.path).writeText(o.toString())
+        metaFile(novel.sourceId, novel.path).let { atomicWriteText(it, o.toString()) }
     }
 
     private fun upsertIndex(entry: DownloadEntry) {
@@ -237,7 +260,7 @@ class DownloadStore(context: Context) {
                     .put("updatedAt", it.updatedAt),
             )
         }
-        indexFile.writeText(arr.toString())
+        atomicWriteText(indexFile, arr.toString())
     }
 
     private fun sha1(s: String): String {

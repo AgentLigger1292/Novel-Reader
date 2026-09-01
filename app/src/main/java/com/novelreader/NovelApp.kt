@@ -48,5 +48,12 @@ class NovelApp : Application(), ImageLoaderFactory {
         downloads = DownloadStore(this)
     }
 
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        if (level >= TRIM_MEMORY_RUNNING_LOW) {
+            com.novelreader.data.NovelCache.trim()
+        }
+    }
+
     override fun newImageLoader(): ImageLoader = CoverLoader.get(this)
 }

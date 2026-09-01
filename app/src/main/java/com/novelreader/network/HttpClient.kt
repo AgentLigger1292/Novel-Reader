@@ -52,6 +52,7 @@ class HttpClient(context: Context) {
 
     fun postForm(url: String, body: FormBody, referer: String? = null): String {
         SharedCookies.jar.flush()
+        RateLimiter.acquire(siteOf(url))
         val req = Request.Builder()
             .url(url)
             .post(body)
@@ -72,21 +73,40 @@ class HttpClient(context: Context) {
 
     private fun getHtmlOkHttp(url: String): String {
         SharedCookies.jar.flush()
+        RateLimiter.acquire(siteOf(url))
         val req = Request.Builder()
             .url(url)
             .header("User-Agent", ua)
             .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
             .header("Referer", siteOf(url))
             .build()
-        client.newCall(req).execute().use { res ->
-            val body = res.body?.string().orEmpty()
-            Log.i(TAG, "OkHttp ${res.code} len=${body.length}")
-            if (looksLikeCf(res.code, body)) {
-                throw CfChallengeException(siteOf(url))
+        // 429/5xx → retry with exponential backoff; CF is NOT retried (needs WebView).
+        var lastError: Exception? = null
+        for (attempt in 0..MAX_RETRIES) {
+            if (attempt > 0) {
+                val delayMs = RETRY_BASE_MS * (1L shl (attempt - 1))
+                Log.i(TAG, "retry $attempt/$MAX_RETRIES in ${delayMs}ms for $url")
+                Thread.sleep(delayMs)
+                RateLimiter.acquire(siteOf(url))
             }
-            if (!res.isSuccessful) throw IllegalStateException("HTTP ${res.code}")
-            return body
+            try {
+                client.newCall(req).execute().use { res ->
+                    val body = res.body?.string().orEmpty()
+                    Log.i(TAG, "OkHttp ${res.code} len=${body.length}")
+                    if (looksLikeCf(res.code, body)) {
+                        throw CfChallengeException(siteOf(url))
+                    }
+                    if ((res.code == 429 || res.code >= 500) && attempt < MAX_RETRIES) {
+                        throw RetryableHttpException(res.code)
+                    }
+                    if (!res.isSuccessful) throw IllegalStateException("HTTP ${res.code}")
+                    return body
+                }
+            } catch (e: RetryableHttpException) {
+                lastError = e
+            }
         }
+        throw lastError ?: IllegalStateException("HTTP request failed: $url")
     }
 
     private fun siteOf(url: String): String = try {
@@ -104,6 +124,37 @@ class HttpClient(context: Context) {
 
     companion object {
         private const val TAG = "BLN"
+        private const val MAX_RETRIES = 2
+        private const val RETRY_BASE_MS = 1200L
+    }
+}
+
+/** Internal signal for retryable status codes (429, 5xx) — never leaves HttpClient. */
+private class RetryableHttpException(val code: Int) : Exception("HTTP $code retryable")
+
+/**
+ * Per-host throttle: at most one request every [MIN_INTERVAL_MS] per host.
+ * Keeps small WP sites from rate-limiting (429) or escalating to a CF challenge.
+ * Blocking sleep is fine — all calls run on Dispatchers.IO workers.
+ */
+private object RateLimiter {
+    private const val MIN_INTERVAL_MS = 450L
+    private val locks = java.util.concurrent.ConcurrentHashMap<String, Any>()
+    private val lastHit = java.util.concurrent.ConcurrentHashMap<String, Long>()
+
+    fun acquire(hostKey: String) {
+        val lock = locks.computeIfAbsent(hostKey) { Any() }
+        synchronized(lock) {
+            while (true) {
+                val now = System.currentTimeMillis()
+                val next = (lastHit[hostKey] ?: 0L) + MIN_INTERVAL_MS
+                if (next <= now) {
+                    lastHit[hostKey] = now
+                    return
+                }
+                Thread.sleep(next - now)
+            }
+        }
     }
 }
 

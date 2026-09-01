@@ -32,6 +32,20 @@ data class HistoryEntity(
 
 fun libraryKey(sourceId: String, path: String) = "$sourceId|$path"
 
+/** Write via temp file + rename so a crash mid-write never corrupts the JSON. */
+internal fun atomicWriteText(target: java.io.File, text: String) {
+    val tmp = java.io.File(target.parentFile, target.name + ".tmp")
+    tmp.writeText(text)
+    if (!tmp.renameTo(target)) {
+        // rename can fail if target exists on some filesystems — fall back to replace
+        target.delete()
+        if (!tmp.renameTo(target)) {
+            tmp.delete()
+            target.writeText(text)
+        }
+    }
+}
+
 class AppStore(context: Context) {
     private val dir = context.filesDir
     private val libFile = dir.resolve("library.json")
@@ -114,7 +128,7 @@ class AppStore(context: Context) {
                     .put("addedAt", it.addedAt),
             )
         }
-        libFile.writeText(arr.toString())
+        atomicWriteText(libFile, arr.toString())
     }
 
     private fun saveHistory(items: List<HistoryEntity>) {
@@ -132,6 +146,6 @@ class AppStore(context: Context) {
                     .put("updatedAt", it.updatedAt),
             )
         }
-        histFile.writeText(arr.toString())
+        atomicWriteText(histFile, arr.toString())
     }
 }
