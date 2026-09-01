@@ -33,6 +33,8 @@ import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.automirrored.filled.VolumeOff
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -60,6 +62,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
@@ -751,6 +754,21 @@ fun ReaderScreen(
     val listState = rememberLazyListState()
     val pal = palette(bgMode)
 
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val tts = remember { ReaderTts(context) }
+    val isPlayingTts by tts.isPlaying.collectAsState()
+    val ttsIndex by tts.currentIndex.collectAsState()
+
+    DisposableEffect(Unit) {
+        onDispose { tts.shutdown() }
+    }
+
+    LaunchedEffect(ttsIndex, isPlayingTts) {
+        if (isPlayingTts && ttsIndex in paragraphs.indices) {
+            listState.animateScrollToItem(ttsIndex)
+        }
+    }
+
     val scrollProgress by remember {
         derivedStateOf {
             val info = listState.layoutInfo
@@ -882,6 +900,19 @@ fun ReaderScreen(
                     }
                 },
                 actions = {
+                    IconButton(
+                        enabled = !loading && paragraphs.isNotEmpty(),
+                        onClick = {
+                            val start = listState.firstVisibleItemIndex.coerceAtLeast(0)
+                            tts.toggle(paragraphs, start)
+                        },
+                    ) {
+                        Icon(
+                            if (isPlayingTts) Icons.AutoMirrored.Filled.VolumeOff else Icons.AutoMirrored.Filled.VolumeUp,
+                            if (isPlayingTts) "Stop TTS" else "Read Aloud",
+                            tint = if (isPlayingTts) pal.accent else pal.text,
+                        )
+                    }
                     if (error != null && source.siteUrl != null) {
                         IconButton(onClick = { onOpenCf(source.siteUrl!!) }) {
                             Icon(Icons.Default.Security, "CF", tint = pal.accent)
