@@ -39,6 +39,8 @@ class BacaLightNovelSource(http: HttpClient) : WordPressSource(http) {
         if (tmpl != null) add(tmpl.replace("{q}", q).replace("{page}", page.toString()))
         add("$siteUrl/?s=$q&post_type=wp-manga" + if (page > 1) "&paged=$page" else "")
         add("$siteUrl/?s=$q" + if (page > 1) "&paged=$page" else "")
+        // plain search page keeps /page/N/ style pagination
+        if (page > 1) add("$siteUrl/page/$page/?s=$q&post_type=wp-manga")
         if (tmpl == null) {
             // only probe extras on cold search
             add("$siteUrl/?s=$q&post_type=wp-manga&title=$q&op=&author=&artist=&release=&adult=")
@@ -63,6 +65,9 @@ class BacaLightNovelSource(http: HttpClient) : WordPressSource(http) {
         ".listupd .bsx",
         "div.manga",
         "div.unit",
+        // search-results page ("You searched for …") uses article.maindet cards
+        "article.maindet",
+        "div.maindet",
         "article",
         ".page-listing-item",
     )

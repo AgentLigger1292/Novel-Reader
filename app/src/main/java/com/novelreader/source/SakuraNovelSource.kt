@@ -47,15 +47,18 @@ class SakuraNovelSource(http: HttpClient) : WordPressSource(http) {
     override fun searchTemplateFor(url: String): String? = when {
         url.contains("advanced-search") -> "$siteUrl/advanced-search/?title={q}&order=title"
         url.contains("post_type=wp-manga") -> "$siteUrl/?s={q}&post_type=wp-manga"
+        url.contains("paged=") -> "$siteUrl/?s={q}&paged={page}"
         else -> "$siteUrl/?s={q}"
     }
 
-    // Verified against live DOM (Sep 2026): homepage uses .flexbox3-item /
-    // .flexbox-item cards, NOT .bsx/.listupd (those match 0 elements).
+    // Verified against live DOM (Sep 2026): homepage/pagination uses .flexbox3-item,
+    // search results use .flexbox2-item — NOT .bsx/.listupd (those match 0 elements).
     override val cardSelectors = listOf(
         "div.flexbox3-item",
         ".flexbox3-item",
         "div.flexbox-item",
+        "div.flexbox2-item",
+        ".flexbox2-item",
         "div.bsx",
         ".listupd .bsx",
         "div.bs",

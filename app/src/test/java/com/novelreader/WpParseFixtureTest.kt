@@ -104,8 +104,46 @@ class WpParseFixtureTest {
         assertEquals(0, content.select(".ads").size)
     }
 
-    // ---------- bacalightnovel.co ----------
+    // ---------- search pages (different markup from browse) ----------
 
+    @Test
+    fun sakura_search_cards_parsed_from_flexbox2() {
+        val doc = fixture("sakura_search.html")
+        val novels = WpParse.parseNovelCards(
+            doc, "sakuranovel", "https://sakuranovel.id",
+            cardSelectors = listOf(
+                "div.flexbox3-item", ".flexbox3-item", "div.flexbox-item",
+                "div.flexbox2-item", ".flexbox2-item",
+                "div.bsx", ".listupd .bsx", "div.bs", "article",
+            ),
+            cardLinkSelectors = "a[href*=/series/], a[title]",
+            fallbackLinkSelector = "a[href*=/series/]",
+        )
+        assertEquals(1, novels.size)
+        assertEquals("Hazure Skill “Kage ga Usui” o Motsu Guild Shokuin ga Jitsuha Densetsu no Ansatsusha", novels[0].title)
+        assertTrue(novels[0].coverUrl.orEmpty().contains(".jpg"))
+    }
+
+    @Test
+    fun baca_search_cards_parsed_from_maindet() {
+        val doc = fixture("baca_search.html")
+        val novels = WpParse.parseNovelCards(
+            doc, "bacalightnovel", "https://bacalightnovel.co",
+            cardSelectors = listOf(
+                "div.page-item-detail", "div.bsx", ".listupd .bsx",
+                "article.maindet", "div.maindet", "article",
+            ),
+            cardLinkSelectors = "h3 a, h5 a, h2 a, .post-title a, .tt a, a.series, " +
+                "a[href*=/series/], a[href*=/novel/], a[href*=/manga/]",
+            fallbackLinkSelector = "a[href*=/series/]",
+        )
+        assertEquals(2, novels.size)
+        assertEquals("/series/yama-kelam-yang-disambut/", novels[0].path)
+        assertEquals("Yama – Kelam Yang Disambut", novels[0].title)
+        assertTrue(novels[0].coverUrl.orEmpty().endsWith(".jpg"))
+    }
+
+    // ---------- bacalightnovel.co ----------
     @Test
     fun baca_series_author_themesia_infobox() {
         val doc = fixture("baca_series.html")
