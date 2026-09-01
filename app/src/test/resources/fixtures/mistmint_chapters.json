@@ -1,0 +1,74 @@
+{
+  "data": [
+    {
+      "volumeIndex": 0,
+      "volumeTitle": "Main story",
+      "volumeId": "10f51be2-6962-47a1-a2a6-e83a867d6d07",
+      "chapters": [
+        {
+          "chapterNumber": "1",
+          "createdAt": "2026-02-15T03:02:45.482Z",
+          "freeAt": null,
+          "id": "914c4e19-8dd6-4d76-8344-098b0e85d306",
+          "isFree": true,
+          "isHidden": false,
+          "isOwner": false,
+          "isPurchased": false,
+          "order": 1,
+          "price": 0,
+          "slug": "main-story-chapter-1",
+          "title": "Tool man for a blind date"
+        },
+        {
+          "chapterNumber": "2",
+          "createdAt": "2026-02-15T03:02:45.483Z",
+          "freeAt": null,
+          "id": "c0e4d683-825c-4e8d-8e07-63cb3db2f070",
+          "isFree": true,
+          "isHidden": false,
+          "isOwner": false,
+          "isPurchased": false,
+          "order": 2,
+          "price": 0,
+          "slug": "main-story-chapter-2",
+          "title": "Debt"
+        },
+        {
+          "chapterNumber": "3",
+          "createdAt": "2026-02-15T03:02:45.484Z",
+          "freeAt": null,
+          "id": "bd944188-49b1-4e18-8e20-6cb9a25c1880",
+          "isFree": false,
+          "isHidden": false,
+          "isOwner": false,
+          "isPurchased": false,
+          "order": 3,
+          "price": 30,
+          "slug": "main-story-chapter-3",
+          "title": "\"You came back so early today?\""
+        }
+      ]
+    },
+    {
+      "volumeIndex": 1,
+      "volumeTitle": "Side story",
+      "volumeId": "55b8c0d0-1111-2222-3333-444455556666",
+      "chapters": [
+        {
+          "chapterNumber": "1",
+          "createdAt": "2026-08-01T00:00:00.000Z",
+          "freeAt": null,
+          "id": "aaaa-bbbb",
+          "isFree": true,
+          "isHidden": false,
+          "isOwner": false,
+          "isPurchased": false,
+          "order": 154,
+          "price": 0,
+          "slug": "side-story-chapter-1",
+          "title": "Extra: After the Wedding"
+        }
+      ]
+    }
+  ]
+}

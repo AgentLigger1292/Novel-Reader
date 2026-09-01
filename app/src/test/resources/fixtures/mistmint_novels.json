@@ -1,0 +1,29 @@
+{
+  "data": [
+    {
+      "id": "23c450e1-80cb-4eb4-94c4-7b5af74da49c",
+      "title": "The Devilish Count's Daughter is Bound by the Playboy Marquis's Obsessive Love",
+      "slug": "the-devilish-count-s-daughter-is-bound-by-the-playboy-marquis-s-obsessive-love",
+      "author": "結祈みのり | Minori Yuuki",
+      "description": "The count's daughter Olivia had the worst reputation in high society.",
+      "avatarUrl": "https://web-novel-mistmint.s3.ap-southeast-1.amazonaws.com/novels/aaa.jpg",
+      "status": 0,
+      "nativeLanguage": "Japanese",
+      "isMature": false,
+      "views": 100
+    },
+    {
+      "id": "82b01e8c-9b7c-4081-80f8-7254f19d1d04",
+      "title": "The Nerd is Troubled",
+      "slug": "the-nerd-is-troubled",
+      "author": "陈可羞",
+      "description": "There's always this novel where the main gong is a wealthy Alpha.",
+      "avatarUrl": "https://web-novel-mistmint.s3.ap-southeast-1.amazonaws.com/novels/bbb.jpg",
+      "status": 0,
+      "nativeLanguage": "Chinese",
+      "isMature": false,
+      "views": 581051
+    }
+  ],
+  "paging": { "total": 2, "skipPage": 0 }
+}

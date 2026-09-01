@@ -50,4 +50,7 @@ dependencies {
     implementation("io.coil-kt:coil-compose:2.7.0")
 
     testImplementation("junit:junit:4.13.2")
+    // android.jar ships org.json as unimplemented stubs — provide the real
+    // implementation on the unit-test classpath so JSON parsing tests run on JVM
+    testImplementation("org.json:json:20240303")
 }
