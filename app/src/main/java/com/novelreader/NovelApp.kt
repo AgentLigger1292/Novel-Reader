@@ -1,59 +1,78 @@
 package com.novelreader
 
 import android.app.Application
+import androidx.work.Configuration
+import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.NetworkType
+import androidx.work.PeriodicWorkRequestBuilder
+import androidx.work.WorkManager
 import coil.ImageLoader
 import coil.ImageLoaderFactory
-import com.novelreader.data.AppStore
-import com.novelreader.data.DownloadStore
+import com.novelreader.core.AppContainer
+import com.novelreader.data.NovelCache
 import com.novelreader.network.CoverLoader
-import com.novelreader.network.HttpClient
-import com.novelreader.source.BacaLightNovelSource
-import com.novelreader.source.DummySource
-import com.novelreader.source.MistmintHavenSource
-import com.novelreader.source.NovelSource
-import com.novelreader.source.SakuraNovelSource
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
+import com.novelreader.work.AppWorkerFactory
+import com.novelreader.work.TrackWorker
+import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 
-class NovelApp : Application(), ImageLoaderFactory {
-    lateinit var store: AppStore
-        private set
-    lateinit var downloads: DownloadStore
+class NovelApp : Application(), ImageLoaderFactory, Configuration.Provider {
+    lateinit var container: AppContainer
         private set
 
-    val http by lazy { HttpClient(this) }
-
-    val sources: Map<String, NovelSource> by lazy {
-        val dummy = DummySource()
-        val baca = BacaLightNovelSource(http)
-        val sakura = SakuraNovelSource(http)
-        val mistmint = MistmintHavenSource(http)
-        mapOf(dummy.id to dummy, baca.id to baca, sakura.id to sakura, mistmint.id to mistmint)
-    }
-
-    var selectedSourceId: String = "bacalightnovel"
-
-    private val _cookieGeneration = MutableStateFlow(0)
-    val cookieGeneration: StateFlow<Int> = _cookieGeneration.asStateFlow()
-
-    val selectedSource: NovelSource
-        get() = sources[selectedSourceId] ?: sources.values.first()
-
-    fun onCfCleared() {
-        _cookieGeneration.value = _cookieGeneration.value + 1
-    }
+    private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     override fun onCreate() {
         super.onCreate()
-        store = AppStore(this)
-        downloads = DownloadStore(this)
+        container = AppContainer(this)
+        appScope.launch {
+            container.initOnce()
+            scheduleTracker()
+        }
     }
+
+    /** Kotatsu TrackWorker: periodic new-chapter check for favourites. */
+    private fun scheduleTracker() {
+        if (!container.settings.trackerEnabled) return
+        val hours = container.settings.trackerIntervalHours.toLong()
+        WorkManager.getInstance(this).enqueueUniquePeriodicWork(
+            TrackWorker.UNIQUE_NAME,
+            ExistingPeriodicWorkPolicy.KEEP,
+            PeriodicWorkRequestBuilder<TrackWorker>(hours, TimeUnit.HOURS)
+                .setConstraints(
+                    androidx.work.Constraints.Builder()
+                        .setRequiredNetworkType(NetworkType.CONNECTED)
+                        .build(),
+                )
+                .build(),
+        )
+    }
+
+    fun runTrackerNow() {
+        appScope.launch {
+            val request = androidx.work.OneTimeWorkRequestBuilder<TrackWorker>()
+                .setConstraints(
+                    androidx.work.Constraints.Builder()
+                        .setRequiredNetworkType(NetworkType.CONNECTED)
+                        .build(),
+                )
+                .build()
+            WorkManager.getInstance(this@NovelApp).enqueue(request)
+        }
+    }
+
+    override val workManagerConfiguration: Configuration
+        get() = Configuration.Builder()
+            .setWorkerFactory(AppWorkerFactory(container))
+            .build()
 
     override fun onTrimMemory(level: Int) {
         super.onTrimMemory(level)
         if (level >= TRIM_MEMORY_RUNNING_LOW) {
-            com.novelreader.data.NovelCache.trim()
+            NovelCache.trim()
         }
     }
 

@@ -2,10 +2,10 @@ package com.novelreader.ui
 
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.LibraryBooks
-import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.automirrored.filled.MenuBook
+import androidx.compose.material.icons.filled.Explore
+import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.History
-import androidx.compose.material.icons.filled.Home
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -21,6 +21,13 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.novelreader.NovelApp
+import com.novelreader.ui.details.DetailsScreen
+import com.novelreader.ui.explore.ExploreScreen
+import com.novelreader.ui.lists.DownloadsScreen
+import com.novelreader.ui.lists.FeedScreen
+import com.novelreader.ui.lists.FavouritesScreen
+import com.novelreader.ui.lists.HistoryScreen
+import com.novelreader.ui.reader.ReaderScreen
 import java.net.URLDecoder
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
@@ -28,80 +35,91 @@ import java.nio.charset.StandardCharsets
 private fun enc(s: String) = URLEncoder.encode(s, StandardCharsets.UTF_8.toString())
 private fun dec(s: String) = URLDecoder.decode(s, StandardCharsets.UTF_8.toString())
 
+/** Kotatsu NavItem equivalent: FEED, HISTORY, FAVOURITES, EXPLORE. */
+private data class NavItem(
+    val route: String,
+    val label: String,
+    val icon: androidx.compose.ui.graphics.vector.ImageVector,
+)
+
+private val NAV_ITEMS = listOf(
+    NavItem("feed", "Feed", Icons.AutoMirrored.Filled.MenuBook),
+    NavItem("history", "History", Icons.Default.History),
+    NavItem("favourites", "Favourite", Icons.Default.Favorite),
+    NavItem("explore", "Explore", Icons.Default.Explore),
+)
+
 @Composable
 fun AppNav(app: NovelApp) {
+    val container = app.container
     val nav = rememberNavController()
     val back by nav.currentBackStackEntryAsState()
     val route = back?.destination?.route.orEmpty()
-    val showBar = route in listOf("browse", "library", "downloads", "history")
 
     Scaffold(
         bottomBar = {
-            if (showBar) {
+            if (route in NAV_ITEMS.map { it.route }) {
                 NavigationBar {
-                    NavigationBarItem(
-                        selected = route == "browse",
-                        onClick = { nav.navigate("browse") { launchSingleTop = true } },
-                        icon = { Icon(Icons.Default.Home, null) },
-                        label = { Text("Browse") },
-                    )
-                    NavigationBarItem(
-                        selected = route == "library",
-                        onClick = { nav.navigate("library") { launchSingleTop = true } },
-                        icon = { Icon(Icons.AutoMirrored.Filled.LibraryBooks, null) },
-                        label = { Text("Library") },
-                    )
-                    NavigationBarItem(
-                        selected = route == "downloads",
-                        onClick = { nav.navigate("downloads") { launchSingleTop = true } },
-                        icon = { Icon(Icons.Default.Download, null) },
-                        label = { Text("Offline") },
-                    )
-                    NavigationBarItem(
-                        selected = route == "history",
-                        onClick = { nav.navigate("history") { launchSingleTop = true } },
-                        icon = { Icon(Icons.Default.History, null) },
-                        label = { Text("History") },
-                    )
+                    NAV_ITEMS.forEach { item ->
+                        NavigationBarItem(
+                            selected = route == item.route,
+                            onClick = {
+                                nav.navigate(item.route) {
+                                    popUpTo("feed") { saveState = true }
+                                    launchSingleTop = true
+                                    restoreState = true
+                                }
+                            },
+                            icon = { Icon(item.icon, null) },
+                            label = { Text(item.label) },
+                        )
+                    }
                 }
             }
         },
     ) { pad ->
-        NavHost(nav, startDestination = "browse", Modifier.padding(pad)) {
-            composable("browse") {
-                BrowseScreen(
-                    app = app,
+        NavHost(nav, startDestination = "feed", Modifier.padding(pad)) {
+            composable("feed") {
+                FeedScreen(
+                    container = container,
                     onOpenNovel = { sourceId, path ->
                         nav.navigate("novel/${enc(sourceId)}/${enc(path)}")
                     },
-                    onOpenCf = { siteUrl ->
-                        nav.navigate("cf/${enc(siteUrl)}")
-                    },
-                )
-            }
-            composable("library") {
-                LibraryScreen(
-                    app = app,
-                    onOpenNovel = { sourceId, path ->
-                        nav.navigate("novel/${enc(sourceId)}/${enc(path)}")
-                    },
-                )
-            }
-            composable("downloads") {
-                DownloadsScreen(
-                    app = app,
-                    onOpenNovel = { sourceId, path ->
-                        nav.navigate("novel/${enc(sourceId)}/${enc(path)}")
-                    },
+                    onCheckNow = { app.runTrackerNow() },
                 )
             }
             composable("history") {
                 HistoryScreen(
-                    app = app,
+                    container = container,
                     onOpenChapter = { sourceId, novelPath, chapterPath, novelTitle ->
                         nav.navigate(
                             "reader/${enc(sourceId)}/${enc(novelPath)}/${enc(chapterPath)}/${enc(novelTitle)}",
                         )
+                    },
+                )
+            }
+            composable("favourites") {
+                FavouritesScreen(
+                    container = container,
+                    onOpenNovel = { sourceId, path ->
+                        nav.navigate("novel/${enc(sourceId)}/${enc(path)}")
+                    },
+                )
+            }
+            composable("explore") {
+                ExploreScreen(
+                    container = container,
+                    onOpenNovel = { sourceId, path ->
+                        nav.navigate("novel/${enc(sourceId)}/${enc(path)}")
+                    },
+                    onOpenCf = { siteUrl -> nav.navigate("cf/${enc(siteUrl)}") },
+                )
+            }
+            composable("downloads") {
+                DownloadsScreen(
+                    container = container,
+                    onOpenNovel = { sourceId, path ->
+                        nav.navigate("novel/${enc(sourceId)}/${enc(path)}")
                     },
                 )
             }
@@ -112,10 +130,7 @@ fun AppNav(app: NovelApp) {
                 val siteUrl = dec(entry.arguments!!.getString("siteUrl")!!)
                 CfWebViewScreen(
                     siteUrl = siteUrl,
-                    onDone = {
-                        app.onCfCleared()
-                        nav.popBackStack()
-                    },
+                    onDone = { nav.popBackStack() },
                     onBack = { nav.popBackStack() },
                 )
             }
@@ -128,20 +143,17 @@ fun AppNav(app: NovelApp) {
             ) { entry ->
                 val sourceId = dec(entry.arguments!!.getString("sourceId")!!)
                 val path = dec(entry.arguments!!.getString("path")!!)
-                NovelDetailScreen(
-                    app = app,
+                DetailsScreen(
+                    container = container,
                     sourceId = sourceId,
                     path = path,
-                    preferOffline = false,
                     onBack = { nav.popBackStack() },
                     onOpenChapter = { chapterPath, novelTitle ->
                         nav.navigate(
                             "reader/${enc(sourceId)}/${enc(path)}/${enc(chapterPath)}/${enc(novelTitle)}",
                         )
                     },
-                    onOpenCf = { siteUrl ->
-                        nav.navigate("cf/${enc(siteUrl)}")
-                    },
+                    onOpenCf = { siteUrl -> nav.navigate("cf/${enc(siteUrl)}") },
                 )
             }
             composable(
@@ -156,7 +168,7 @@ fun AppNav(app: NovelApp) {
                 val srcId = dec(entry.arguments!!.getString("sourceId")!!)
                 val novPath = dec(entry.arguments!!.getString("novelPath")!!)
                 ReaderScreen(
-                    app = app,
+                    container = container,
                     sourceId = srcId,
                     novelPath = novPath,
                     chapterPath = dec(entry.arguments!!.getString("chapterPath")!!),
@@ -171,9 +183,7 @@ fun AppNav(app: NovelApp) {
                             }
                         }
                     },
-                    onOpenCf = { siteUrl ->
-                        nav.navigate("cf/${enc(siteUrl)}")
-                    },
+                    onOpenCf = { siteUrl -> nav.navigate("cf/${enc(siteUrl)}") },
                 )
             }
         }

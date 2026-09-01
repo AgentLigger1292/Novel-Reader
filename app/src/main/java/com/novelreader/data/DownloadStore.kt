@@ -39,6 +39,10 @@ class DownloadStore(context: Context) {
     private val _entries = MutableStateFlow(loadIndex())
     val entries: StateFlow<List<DownloadEntry>> = _entries.asStateFlow()
 
+    /** Live batch-download progress (novelKey, done, total) — updated from downloadAll. */
+    private val _liveProgress = MutableStateFlow<Triple<String, Int, Int>?>(null)
+    val liveProgress: StateFlow<Triple<String, Int, Int>?> = _liveProgress.asStateFlow()
+
     fun isDownloaded(sourceId: String, novelPath: String): Boolean {
         val key = libraryKey(sourceId, novelPath)
         return _entries.value.any { it.key == key && it.downloadedCount > 0 }
@@ -111,6 +115,7 @@ class DownloadStore(context: Context) {
         saveMeta(detail)
 
         suspend fun progress(done: Int, total: Int, name: String) {
+            _liveProgress.value = Triple(key, done, total)
             withContext(Dispatchers.Main) { onProgress(done, total, name) }
         }
 
@@ -170,6 +175,7 @@ class DownloadStore(context: Context) {
             downloadedCount = downloaded,
         )
         upsertIndex(entry)
+        _liveProgress.value = null
         Log.i(TAG, "download done $key $downloaded/$total")
         entry
     }
