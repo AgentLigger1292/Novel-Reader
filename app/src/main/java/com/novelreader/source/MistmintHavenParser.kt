@@ -58,10 +58,16 @@ class MistmintHavenParser(context: NovelLoaderContext) : PagedNovelParser(
         val doc = context.httpGetDocument(url)
         val content = doc.selectFirst("div.chapter-content-text")
             ?: doc.selectFirst("div.chapter-content-container")
-        if (content == null || content.text().trim().length < 40) {
-            return "<p>Content not found — chapter mungkin masih berbayar atau situs berubah.</p>"
+        if (content != null && content.text().trim().length >= 40) {
+            content.select("script, style, noscript, iframe, button, .ads, .adsbygoogle").remove()
+            return content.html()
         }
-        content.select("script, style, noscript, iframe, button, .ads, .adsbygoogle").remove()
-        return content.html()
+        // the site stopped SSR-ing the chapter body: it now streams the HTML as a
+        // Next.js RSC text chunk inside <script>self.__next_f.push(…)</script>
+        val fragment = MistmintParse.extractRscChapterHtml(doc.html())
+        if (fragment != null && Jsoup.parse(fragment).text().trim().length >= 40) {
+            return fragment
+        }
+        return "<p>Content not found — chapter mungkin masih berbayar atau situs berubah.</p>"
     }
 }

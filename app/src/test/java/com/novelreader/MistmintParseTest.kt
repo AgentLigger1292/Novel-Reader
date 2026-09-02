@@ -86,4 +86,40 @@ class MistmintParseTest {
         assertEquals("/novels/b", novels[0].path)
         assertNull(novels[0].coverUrl)
     }
+
+    // ---- Next.js RSC chapter extraction (site dropped SSR body Sep 2026) ----
+
+    /** Mirrors the live payload: escaped HTML inside a self.__next_f.push text chunk. */
+    private fun rscFixture(): String {
+        val body = "\\u003ch1\\u003e\\u003cstrong\\u003eThe Title\\u003c/strong\\u003e\\u003c/h1\\u003e" +
+            "\\u003cp\\u003e\\u003cspan style=\\\"background-color:transparent\\\"\\u003eFirst line.\\u003c/span\\u003e\\u003c/p\\u003e" +
+            "\\u003cp\\u003eSecond line.\\u003c/p\\u003e"
+        return "<html><head>" +
+            "<script>self.__next_f.push([1,\"some:metadata\"])</script>" +
+            "<script>self.__next_f.push([1,\"$body\"])</script>" +
+            "<script>self.__next_f.push([1,\"f:[\\\"\\$\\\",\\\"div\\\",null\"])</script>" +
+            "</head><body></body></html>"
+    }
+
+    @Test
+    fun rsc_chapter_html_extracted_from_push_chunks() {
+        val html = MistmintParse.extractRscChapterHtml(rscFixture())
+        assertTrue(html != null)
+        assertTrue(html!!.contains("First line."))
+        assertTrue(html.contains("Second line."))
+        assertTrue(html.startsWith("<h1>") || html.contains("<strong>The Title</strong>"))
+        // escaped quotes inside the JS string must not truncate the chunk
+        assertTrue(!html.contains("background-color:transparent\\\""))
+    }
+
+    @Test
+    fun rsc_extraction_returns_null_when_no_push_chunks() {
+        assertNull(MistmintParse.extractRscChapterHtml("<html><body><p>plain</p></body></html>"))
+    }
+
+    @Test
+    fun rsc_extraction_returns_null_when_chunk_is_not_prose() {
+        val raw = "<script>self.__next_f.push([1,\"short\"])</script>"
+        assertNull(MistmintParse.extractRscChapterHtml(raw))
+    }
 }
