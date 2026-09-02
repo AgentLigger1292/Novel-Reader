@@ -119,46 +119,52 @@ class DownloadStore(context: Context) {
             withContext(Dispatchers.Main) { onProgress(done, total, name) }
         }
 
-        var done = 0
         val total = detail.chapters.size
-        // CF challenge pauses the batch (user clears it in WebView), it never cancels it:
-        // each pending chapter is retried up to cfRetries times before being skipped.
-        var pending = detail.chapters.toList()
-        var cfRetries = 0
-        while (pending.isNotEmpty()) {
-            val nextPass = ArrayList<Chapter>()
-            for (ch in pending) {
-                progress(done, total, ch.name)
-                val cf = chapterFile(novel.sourceId, novel.path, ch.path)
-                if (!cf.exists() || cf.length() < 20) {
-                    try {
-                        val html = source.getChapterContent(ch.path)
-                        if (html.isNotBlank()) {
-                            atomicWriteText(cf, html)
-                        }
-                    } catch (e: Exception) {
-                        Log.w(TAG, "dl fail ${ch.path}: ${e.message}")
-                        if (e is com.novelreader.network.CfChallengeException ||
-                            e is com.novelreader.network.SessionBusyException
-                        ) {
-                            nextPass.add(ch) // pause here — CF clears via UI, then we continue
+
+        try {
+            var done = 0
+            // CF challenge pauses the batch (user clears it in WebView), it never cancels it:
+            // each pending chapter is retried up to cfRetries times before being skipped.
+            var pending = detail.chapters.toList()
+            var cfRetries = 0
+            while (pending.isNotEmpty()) {
+                val nextPass = ArrayList<Chapter>()
+                for (ch in pending) {
+                    progress(done, total, ch.name)
+                    val cf = chapterFile(novel.sourceId, novel.path, ch.path)
+                    if (!cf.exists() || cf.length() < 20) {
+                        try {
+                            val html = source.getChapterContent(ch.path)
+                            if (html.isNotBlank()) {
+                                atomicWriteText(cf, html)
+                            }
+                        } catch (e: Exception) {
+                            Log.w(TAG, "dl fail ${ch.path}: ${e.message}")
+                            if (e is com.novelreader.network.CfChallengeException ||
+                                e is com.novelreader.network.SessionBusyException
+                            ) {
+                                nextPass.add(ch) // pause here — CF clears via UI, then we continue
+                            }
                         }
                     }
+                    done++
+                    progress(done, total, ch.name)
                 }
-                done++
-                progress(done, total, ch.name)
-            }
-            if (nextPass.size == pending.size) {
-                cfRetries++
-                if (cfRetries > 3) {
-                    Log.w(TAG, "download paused: CF not cleared after 3 passes, ${nextPass.size} skipped")
-                    break
+                if (nextPass.size == pending.size) {
+                    cfRetries++
+                    if (cfRetries > 3) {
+                        Log.w(TAG, "download paused: CF not cleared after 3 passes, ${nextPass.size} skipped")
+                        break
+                    }
+                    Log.i(TAG, "CF pause ${cfRetries}/3 — ${nextPass.size} chapters deferred")
+                } else {
+                    cfRetries = 0
                 }
-                Log.i(TAG, "CF pause ${cfRetries}/3 — ${nextPass.size} chapters deferred")
-            } else {
-                cfRetries = 0
+                pending = nextPass
             }
-            pending = nextPass
+        } finally {
+            // reset even on cancellation/exception, or Details shows "Mengunduh x/y" forever
+            _liveProgress.value = null
         }
 
         val downloaded = detail.chapters.count {
@@ -175,7 +181,6 @@ class DownloadStore(context: Context) {
             downloadedCount = downloaded,
         )
         upsertIndex(entry)
-        _liveProgress.value = null
         Log.i(TAG, "download done $key $downloaded/$total")
         entry
     }

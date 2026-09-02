@@ -7,7 +7,9 @@ import com.novelreader.model.Chapter
 import com.novelreader.model.Novel
 import com.novelreader.model.NovelDetail
 import com.novelreader.source.NovelSource
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.withContext
 
 /**
  * Kotatsu-style facade over the app-facing sources.
@@ -41,35 +43,38 @@ class SourcesRepository(
      * getNovel with Room chapter cache: chapter list is stored so the details
      * screen and tracker work offline, exactly like Kotatsu's MangaDataRepository.
      */
-    suspend fun getNovelWithCache(sourceId: String, path: String): Pair<NovelDetail, String> {
-        val source = requireNotNull(byId(sourceId)) { "unknown source $sourceId" }
-        val detail = source.getNovel(path)
-        val novelId = novelKey(sourceId, detail.novel.path)
-        db.novelsDao().upsert(
-            com.novelreader.core.db.NovelEntity(
-                novelId = novelId,
-                sourceId = sourceId,
-                path = detail.novel.path,
-                title = detail.novel.title,
-                author = detail.novel.author,
-                coverUrl = detail.novel.coverUrl,
-                description = detail.novel.description,
-            ),
-        )
-        db.chaptersDao().replaceChapters(
-            novelId,
-            detail.chapters.mapIndexed { i, ch ->
-                ChapterEntity(
+    suspend fun getNovelWithCache(sourceId: String, path: String): Pair<NovelDetail, String> =
+        withContext(Dispatchers.IO) {
+            // parser calls are blocking OkHttp — must stay off Dispatchers.Main
+            // (DetailsViewModel collects this straight from viewModelScope)
+            val source = requireNotNull(byId(sourceId)) { "unknown source $sourceId" }
+            val detail = source.getNovel(path)
+            val novelId = novelKey(sourceId, detail.novel.path)
+            db.novelsDao().upsert(
+                com.novelreader.core.db.NovelEntity(
                     novelId = novelId,
-                    chapterId = ch.path,
-                    name = ch.name,
-                    number = ch.number,
-                    chapterIndex = i,
-                )
-            },
-        )
-        return detail to novelId
-    }
+                    sourceId = sourceId,
+                    path = detail.novel.path,
+                    title = detail.novel.title,
+                    author = detail.novel.author,
+                    coverUrl = detail.novel.coverUrl,
+                    description = detail.novel.description,
+                ),
+            )
+            db.chaptersDao().replaceChapters(
+                novelId,
+                detail.chapters.mapIndexed { i, ch ->
+                    ChapterEntity(
+                        novelId = novelId,
+                        chapterId = ch.path,
+                        name = ch.name,
+                        number = ch.number,
+                        chapterIndex = i,
+                    )
+                },
+            )
+            detail to novelId
+        }
 
     suspend fun cachedChapters(novelId: String): List<Chapter> =
         db.chaptersDao().chaptersOf(novelId).map {

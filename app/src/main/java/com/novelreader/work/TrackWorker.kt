@@ -27,15 +27,17 @@ class TrackWorker(
         for (fav in favourites) {
             if (isStopped) break
             val novelId = SourcesRepository.novelKey(fav.sourceId, fav.path)
+            // snapshot the Room cache BEFORE fetching — getNovelWithCache replaces
+            // the chapters table with the fresh list, so diffing afterwards is always 0
+            val cached = container.sourcesRepository.cachedChapters(novelId)
+                .mapIndexed { i, ch ->
+                    com.novelreader.core.db.ChapterEntity(novelId, ch.path, ch.name, ch.number, i)
+                }
             val detail = try {
                 container.sourcesRepository.getNovelWithCache(fav.sourceId, fav.path).first
             } catch (e: Exception) {
                 continue // offline / CF — skip this round
             }
-            val cached = container.sourcesRepository.cachedChapters(novelId)
-                .mapIndexed { i, ch ->
-                    com.novelreader.core.db.ChapterEntity(novelId, ch.path, ch.name, ch.number, i)
-                }
             val fresh = detail.chapters.mapIndexed { i, ch ->
                 com.novelreader.core.db.ChapterEntity(novelId, ch.path, ch.name, ch.number, i)
             }

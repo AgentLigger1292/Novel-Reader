@@ -11,6 +11,9 @@ import androidx.work.ForegroundInfo
 import androidx.work.WorkerParameters
 import com.novelreader.core.AppContainer
 import com.novelreader.core.parser.SourcesRepository
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 
 /**
  * Kotatsu-style background download: one unique CoroutineWorker per novel.
@@ -40,17 +43,29 @@ class DownloadWorker(
         }
 
         createChannel()
+        val total = detail.chapters.size
         runCatching {
-            setForeground(createForegroundInfo(title, 0, detail.chapters.size))
+            setForeground(createForegroundInfo(title, 0, total))
         }
 
-        var done = 0
-        var lastChapterName = ""
-        val total = detail.chapters.size
+        // re-post the foreground notification as chapters complete, otherwise it
+        // would stay at "0/N" for the whole batch
+        val updates = Channel<Int>(Channel.CONFLATED)
         try {
-            container.downloads.downloadAll(source, detail) { d, t, name ->
-                done = d
-                lastChapterName = name
+            coroutineScope {
+                val notifier = launch {
+                    for (d in updates) {
+                        runCatching { setForeground(createForegroundInfo(title, d, total)) }
+                    }
+                }
+                try {
+                    container.downloads.downloadAll(source, detail) { d, _, _ ->
+                        updates.trySend(d)
+                    }
+                } finally {
+                    updates.close()
+                    notifier.join()
+                }
             }
         } catch (e: Exception) {
             android.util.Log.w("DownloadWorker", "download fail $novelId: ${e.message}")

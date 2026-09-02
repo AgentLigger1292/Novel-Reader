@@ -145,7 +145,7 @@ fun DetailsScreen(
                         "Download",
                     )
                 }
-                IconButton(onClick = { vm.toggleFavourite() }) {
+                IconButton(onClick = { vm.toggleFavourite(isFavourite) }) {
                     Icon(
                         if (isFavourite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
                         "Favourite",

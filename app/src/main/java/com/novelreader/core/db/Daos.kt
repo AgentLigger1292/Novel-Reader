@@ -64,6 +64,9 @@ interface FavouritesDao {
     @Query("SELECT * FROM favourite_categories ORDER BY sortKey ASC LIMIT 1")
     suspend fun firstCategory(): FavouriteCategoryEntity?
 
+    @Query("SELECT * FROM favourite_categories")
+    suspend fun allCategories(): List<FavouriteCategoryEntity>
+
     @Query("SELECT f.*, n.title, n.sourceId, n.path, n.coverUrl, n.author FROM favourites f INNER JOIN novels n ON n.novelId = f.novelId WHERE f.categoryId = :categoryId ORDER BY f.createdAt DESC")
     fun observeNovelsIn(categoryId: Long): Flow<List<FavouriteWithNovel>>
 

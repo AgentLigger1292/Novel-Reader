@@ -25,11 +25,15 @@ class LegacyImporter(
         val histFile = File(filesDir, "history.json")
         if (!libFile.exists() && !histFile.exists()) return
 
-        runCatching {
-            db.favouritesDao().insertCategory(
-                FavouriteCategoryEntity(title = "Umum", sortKey = 0),
-            )
-        } // REPLACE on conflict: safe to re-run
+        // idempotent seed: if the rename below ever fails, a re-run must not
+        // create a duplicate "Umum" category
+        if (db.favouritesDao().allCategories().none { it.title == "Umum" }) {
+            runCatching {
+                db.favouritesDao().insertCategory(
+                    FavouriteCategoryEntity(title = "Umum", sortKey = 0),
+                )
+            }
+        }
 
         if (libFile.exists()) {
             val pairs = LegacyMigration.parseLibrary(libFile.readText())
@@ -59,8 +63,13 @@ class LegacyImporter(
             Log.i(tag, "downloads index present — folder format unchanged, kept as-is")
         }
 
-        libFile.renameTo(File(filesDir, "library.json.migrated"))
-        histFile.renameTo(File(filesDir, "history.json.migrated"))
+        // rename can legitimately fail on some filesystems — the import above is
+        // idempotent, so the next launch just retries it
+        val libRenamed = !libFile.exists() || libFile.renameTo(File(filesDir, "library.json.migrated"))
+        val histRenamed = !histFile.exists() || histFile.renameTo(File(filesDir, "history.json.migrated"))
+        if (!libRenamed || !histRenamed) {
+            Log.w(tag, "legacy rename failed (lib=$libRenamed hist=$histRenamed) — will retry next launch")
+        }
         Log.i(tag, "legacy migration done")
     }
 }

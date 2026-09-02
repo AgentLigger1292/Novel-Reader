@@ -6,6 +6,7 @@ import com.novelreader.core.AppContainer
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * Reader progress persistence (Kotatsu HistoryRepository.addOrUpdate pattern):
@@ -34,6 +35,10 @@ class ReaderViewModel(private val container: AppContainer) : ViewModel() {
         }
     }
 
+    /**
+     * Immediate write that must survive the back navigation cancelling
+     * viewModelScope — NonCancellable keeps the Room write alive mid-flight.
+     */
     fun flushNow(
         novelId: String,
         chapterId: String,
@@ -44,9 +49,11 @@ class ReaderViewModel(private val container: AppContainer) : ViewModel() {
     ) {
         saveJob?.cancel()
         viewModelScope.launch {
-            container.historyRepository.addOrUpdate(
-                novelId, chapterId, chapterName, scroll, percent, chaptersCount,
-            )
+            withContext(kotlinx.coroutines.NonCancellable) {
+                container.historyRepository.addOrUpdate(
+                    novelId, chapterId, chapterName, scroll, percent, chaptersCount,
+                )
+            }
         }
     }
 

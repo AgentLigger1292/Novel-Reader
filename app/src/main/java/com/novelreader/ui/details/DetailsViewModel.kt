@@ -25,7 +25,14 @@ class DetailsViewModel(private val container: AppContainer) : ViewModel() {
     private val _state = MutableStateFlow(UiState())
     val state = _state.asStateFlow()
 
+    private var loadedKey: Pair<String, String>? = null
+
     fun load(sourceId: String, path: String) {
+        // returning from the reader recomposes this screen — skip the network
+        // round-trip when this novel is already loaded (retry still allowed on error)
+        val key = sourceId to path
+        if (loadedKey == key && _state.value.detail != null) return
+        loadedKey = key
         _state.value = UiState(loading = true)
         viewModelScope.launch {
             try {
@@ -44,6 +51,7 @@ class DetailsViewModel(private val container: AppContainer) : ViewModel() {
                     fromCache = false,
                 )
             } catch (e: Exception) {
+                loadedKey = null // allow retry on next LaunchedEffect
                 // offline fallback: use cached chapters if any
                 val novelId = SourcesRepository.novelKey(sourceId, path)
                 val cached = runCatching {
@@ -69,11 +77,15 @@ class DetailsViewModel(private val container: AppContainer) : ViewModel() {
         }
     }
 
-    fun toggleFavourite() {
+    /**
+     * [isFavourite] comes from the Room flow the screen observes (UiState has no
+     * live copy) — otherwise the toggle can never reach remove().
+     */
+    fun toggleFavourite(isFavourite: Boolean) {
         val novelId = _state.value.novelId
         if (novelId.isEmpty()) return
         viewModelScope.launch {
-            if (_state.value.isFavourite) {
+            if (isFavourite) {
                 container.favouritesRepository.remove(novelId)
             } else {
                 val catId = container.favouritesRepository.defaultCategoryId()

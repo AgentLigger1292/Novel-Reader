@@ -109,7 +109,6 @@ fun ReaderScreen(
     DisposableEffect(Unit) {
         onDispose {
             tts.shutdown()
-            // flush final position on leaving the reader
         }
     }
     val scrollProgress by remember {
@@ -240,6 +239,18 @@ fun ReaderScreen(
         prevNext = prev to next
     }
 
+    // flush pending debounced save before the back nav pops this screen —
+    // the saveJob lives in viewModelScope and would be cancelled with it
+    fun flushAndBack() {
+        vm.flushNow(
+            novelId, chapterPath, chapterName,
+            scroll = scrollProgress,
+            percent = scrollProgress,
+            chaptersCount = 0,
+        )
+        onBack()
+    }
+
     Box(
         Modifier
             .fillMaxSize()
@@ -266,7 +277,7 @@ fun ReaderScreen(
                     }
                 },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
+                    IconButton(onClick = { flushAndBack() }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = pal.text)
                     }
                 },

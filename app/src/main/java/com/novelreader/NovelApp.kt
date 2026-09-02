@@ -60,7 +60,12 @@ class NovelApp : Application(), ImageLoaderFactory, Configuration.Provider {
                         .build(),
                 )
                 .build()
-            WorkManager.getInstance(this@NovelApp).enqueue(request)
+            // REPLACE (not APPEND): spam-tapping refresh must not queue parallel workers
+            WorkManager.getInstance(this@NovelApp).enqueueUniqueWork(
+                "${TrackWorker.UNIQUE_NAME}_now",
+                androidx.work.ExistingWorkPolicy.REPLACE,
+                request,
+            )
         }
     }
 
