@@ -59,6 +59,12 @@ fun ExploreScreen(
             .map { SourceUiItem(it.id, it.name, it.siteUrl) }
     }
 
+    // auto-reload once the CF screen completes (tick bumped in AppNav)
+    val cfTick by container.cfClearedTick.collectAsState()
+    LaunchedEffect(cfTick) {
+        vm.onCfTick(cfTick)
+    }
+
     // infinite scroll: when near the bottom, ask for the next page
     val nearEnd by remember {
         derivedStateOf {

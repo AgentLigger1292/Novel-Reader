@@ -130,7 +130,10 @@ fun AppNav(app: NovelApp) {
                 val siteUrl = dec(entry.arguments!!.getString("siteUrl")!!)
                 CfWebViewScreen(
                     siteUrl = siteUrl,
-                    onDone = { nav.popBackStack() },
+                    onDone = {
+                        container.cfClearedTick.value += 1
+                        nav.popBackStack()
+                    },
                     onBack = { nav.popBackStack() },
                 )
             }

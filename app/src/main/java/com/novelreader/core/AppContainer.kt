@@ -27,6 +27,9 @@ class AppContainer(context: Context) {
     val settings = AppSettings(appContext)
     val db: NovelDatabase = NovelDatabase.create(appContext)
 
+    /** Incremented every time the CF screen finishes (auto or manual Done). */
+    val cfClearedTick = kotlinx.coroutines.flow.MutableStateFlow(0)
+
     val http = HttpClient(appContext)
     val loaderContext = NovelLoaderContext(appContext)
 

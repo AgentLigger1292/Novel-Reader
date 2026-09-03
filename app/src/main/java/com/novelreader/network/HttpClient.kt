@@ -22,14 +22,7 @@ class HttpClient(context: Context) {
         SessionWebView.ensure(appContext)
     }
 
-    private val client by lazy {
-        OkHttpClient.Builder()
-            .cookieJar(SharedCookies.jar)
-            .connectTimeout(30, TimeUnit.SECONDS)
-            .readTimeout(45, TimeUnit.SECONDS)
-            .followRedirects(true)
-            .build()
-    }
+    private val client get() = sharedClient
 
     private val ua =
         "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
@@ -126,35 +119,21 @@ class HttpClient(context: Context) {
         private const val TAG = "BLN"
         private const val MAX_RETRIES = 2
         private const val RETRY_BASE_MS = 1200L
-    }
-}
 
-/** Internal signal for retryable status codes (429, 5xx) — never leaves HttpClient. */
-private class RetryableHttpException(val code: Int) : Exception("HTTP $code retryable")
-
-/**
- * Per-host throttle: enforces minimum spacing between requests to the same host
- * without locking worker threads unnecessarily.
- */
-private object RateLimiter {
-    private const val MIN_INTERVAL_MS = 400L
-    private val lastHit = java.util.concurrent.ConcurrentHashMap<String, Long>()
-
-    fun acquire(hostKey: String) {
-        val key = hostKey.lowercase().trim()
-        val now = System.currentTimeMillis()
-        val prev = lastHit[key] ?: 0L
-        val wait = (prev + MIN_INTERVAL_MS) - now
-        if (wait > 0 && wait <= MIN_INTERVAL_MS) {
-            try {
-                Thread.sleep(wait)
-            } catch (_: InterruptedException) {
-                Thread.currentThread().interrupt()
-            }
+        /** ONE OkHttpClient for the whole app (HttpClient + parser context). */
+        val sharedClient: OkHttpClient by lazy {
+            OkHttpClient.Builder()
+                .cookieJar(SharedCookies.jar)
+                .connectTimeout(30, TimeUnit.SECONDS)
+                .readTimeout(45, TimeUnit.SECONDS)
+                .followRedirects(true)
+                .build()
         }
-        lastHit[key] = System.currentTimeMillis()
     }
 }
+
+/** Internal signal for retryable status codes (429, 5xx) — shared with the parser context. */
+class RetryableHttpException(val code: Int) : Exception("HTTP $code retryable")
 
 /** App-wide cookie jar (WebView + OkHttp + Coil). */
 object SharedCookies {

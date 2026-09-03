@@ -164,7 +164,7 @@ fun ReaderScreen(
         // resume position for this novel (only when opening the last-read chapter)
         val resume = vm.resumePosition(novelId)
         pendingResumeScroll = if (resume?.first == chapterPath) resume.second.takeIf { it > 0.01f } else null
-        val memCached = NovelCache.getChapter(chapterPath)
+        val memCached = NovelCache.getChapter("$sourceId|$chapterPath")
         if (memCached != null) {
             paragraphs = htmlToParagraphs(memCached)
             originalParagraphs = paragraphs
@@ -181,7 +181,7 @@ fun ReaderScreen(
                     memCached != null -> memCached
                     else -> {
                         val html = source.getChapterContent(chapterPath)
-                        NovelCache.putChapter(chapterPath, html)
+                        NovelCache.putChapter("$sourceId|$chapterPath", html)
                         html
                     }
                 }
@@ -206,10 +206,13 @@ fun ReaderScreen(
             val idx = chapters.indexOfFirst { it.path == chapterPath }
             if (idx in 0 until chapters.size - 1) {
                 val next = chapters[idx + 1]
-                if (NovelCache.getChapter(next.path) == null) {
+                if (NovelCache.getChapter("$sourceId|${next.path}") == null) {
                     withContext(Dispatchers.IO) {
                         runCatching {
-                            NovelCache.putChapter(next.path, source.getChapterContent(next.path))
+                            NovelCache.putChapter(
+                                "$sourceId|${next.path}",
+                                source.getChapterContent(next.path),
+                            )
                         }
                     }
                 }

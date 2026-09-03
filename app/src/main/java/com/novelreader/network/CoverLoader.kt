@@ -187,7 +187,7 @@ object CoverLoader {
                     webViewClient = object : WebViewClient() {
                         override fun onPageFinished(view: WebView?, url: String?) {
                             if (!webViewReady.get() && url != null &&
-                                url.contains("bacalightnovel")
+                                (url.contains("sakuranovel") || url.contains("bacalightnovel"))
                             ) {
                                 webViewReady.set(true)
                                 Log.i(TAG, "cover WebView ready url=$url title=${view?.title}")

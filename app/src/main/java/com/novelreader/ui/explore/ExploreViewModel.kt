@@ -49,6 +49,9 @@ class ExploreViewModel(private val container: AppContainer) : ViewModel() {
         }
     }
 
+    /** Bumped on every reload — stale async loads (old source/query) bail out. */
+    private var loadSeq = 0
+
     fun selectSource(sourceId: String) {
         if (sourceId == _state.value.sourceId) return
         container.settings.selectedSourceId = sourceId
@@ -65,6 +68,7 @@ class ExploreViewModel(private val container: AppContainer) : ViewModel() {
     }
 
     fun reload() {
+        loadSeq++
         _state.value = _state.value.copy(page = 0, novels = emptyList(), endReached = false)
         loadMore()
     }
@@ -73,6 +77,7 @@ class ExploreViewModel(private val container: AppContainer) : ViewModel() {
         val s = _state.value
         if (s.loading || s.endReached) return
         _state.value = s.copy(loading = true, error = null)
+        val mySeq = loadSeq
         viewModelScope.launch {
             try {
                 val source = container.source(s.sourceId)
@@ -82,6 +87,7 @@ class ExploreViewModel(private val container: AppContainer) : ViewModel() {
                 } else {
                     source.search(s.query, nextPage)
                 }
+                if (mySeq != loadSeq) return@launch // stale: source/query changed meanwhile
                 val merged = (_state.value.novels + fresh).distinctBy { it.path }
                 _state.value = _state.value.copy(
                     novels = merged,
@@ -90,6 +96,7 @@ class ExploreViewModel(private val container: AppContainer) : ViewModel() {
                     endReached = fresh.isEmpty(),
                 )
             } catch (e: Exception) {
+                if (mySeq != loadSeq) return@launch
                 _state.value = _state.value.copy(
                     loading = false,
                     error = e.message ?: "Gagal memuat",
@@ -99,4 +106,14 @@ class ExploreViewModel(private val container: AppContainer) : ViewModel() {
     }
 
     fun onCfCleared() = reload()
+
+    /** CF tick as seen when this VM (re)started; reload only on a new tick. */
+    private var cfTickSeen = container.cfClearedTick.value
+
+    fun onCfTick(tick: Int) {
+        if (tick != cfTickSeen) {
+            cfTickSeen = tick
+            reload()
+        }
+    }
 }
