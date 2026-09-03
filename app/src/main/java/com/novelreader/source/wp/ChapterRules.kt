@@ -121,4 +121,39 @@ object ChapterRules {
             else -> false
         }
     }
+
+    // ---------- SonicMTL (Madara: /novel/slug/chapter-N/) ----------
+
+    fun sonicIsChapterPath(path: String): Boolean {
+        val p = path.lowercase().trimEnd('/')
+        if (p.contains("/feed") || p.endsWith(".pdf") || p.contains("download")) return false
+        if (p.matches(Regex("""/novel/[^/]+/?"""))) return false // series page itself
+        // Madara chapters live directly under the novel slug: /novel/<slug>/chapter-N/
+        return p.matches(Regex("""/novel/[^/]+/chapter[^/]*/?"""))
+    }
+
+    fun sonicCleanChapterName(raw: String, path: String): String {
+        val s = raw.replace(Regex("""\s+"""), " ").trim()
+        val num = sonicExtractChapterNumber(s, path)
+        if (num != null) {
+            val whole = num.toInt()
+            val part = ((num - whole) * 1000f + 0.1f).toInt()
+            val base = if (part > 0) "Chapter $whole Part $part" else "Chapter $whole"
+            val subtitle = s.replace(Regex("""(?i)^chapter\s*\d+(\.\d+)?\s*[-:–]?\s*"""), "").trim()
+            return if (subtitle.isNotEmpty() && subtitle.length < 60) "$base — $subtitle" else base
+        }
+        return s.ifBlank { "Chapter" }
+    }
+
+    fun sonicExtractChapterNumber(name: String, path: String): Float? {
+        val blob = "$path $name"
+        val ch = Regex("""(?i)(?:chapter|ch\.?)[-\s]?(\d+)(?:\.(\d+))?""").find(blob)
+            ?: return null
+        val main = ch.groupValues[1].toFloatOrNull() ?: return null
+        ch.groupValues.getOrNull(2)?.takeIf { it.isNotEmpty() }?.toFloatOrNull()?.let { return main + it }
+        // Madara writes decimal chapters as chapter-88-5 in the URL
+        val part = Regex("""(?i)(?:chapter|ch\.?)[-\s]?\d+(?:\.\d+)?-(\d+)""").find(blob)
+            ?.groupValues?.get(1)?.toFloatOrNull()
+        return if (part != null && part < 1000) main + part / 1000f else main
+    }
 }

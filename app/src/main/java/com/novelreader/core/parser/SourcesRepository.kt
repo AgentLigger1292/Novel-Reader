@@ -30,13 +30,25 @@ class SourcesRepository(
     fun observeEnabledSources(): Flow<List<SourceEntity>> = db.sourcesDao().observeEnabled()
 
     suspend fun seedSources(selectedId: String) {
-        if (db.sourcesDao().all().isNotEmpty()) return
-        val enabled = sources.keys.filter { it != "dummy" }
-        db.sourcesDao().upsertAll(
-            enabled.mapIndexed { i, id ->
-                SourceEntity(sourceId = id, enabled = true, sortKey = i)
-            },
-        )
+        val existing = db.sourcesDao().all()
+        if (existing.isEmpty()) {
+            val enabled = sources.keys.filter { it != "dummy" }
+            db.sourcesDao().upsertAll(
+                enabled.mapIndexed { i, id ->
+                    SourceEntity(sourceId = id, enabled = true, sortKey = i)
+                },
+            )
+            return
+        }
+        // app updates can ship new parsers — append sources missing from the DB
+        val added = sources.keys.filter { it != "dummy" && existing.none { e -> e.sourceId == it } }
+        if (added.isNotEmpty()) {
+            db.sourcesDao().upsertAll(
+                added.mapIndexed { i, id ->
+                    SourceEntity(sourceId = id, enabled = true, sortKey = existing.size + i)
+                },
+            )
+        }
     }
 
     /**

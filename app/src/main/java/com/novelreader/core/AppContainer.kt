@@ -14,6 +14,7 @@ import com.novelreader.source.DummySource
 import com.novelreader.source.MistmintHavenParser
 import com.novelreader.source.NovelSource
 import com.novelreader.source.SakuraNovelParser
+import com.novelreader.source.SonicMtlParser
 
 /**
  * Manual dependency container (Kotatsu-style).
@@ -37,6 +38,8 @@ class AppContainer(context: Context) {
         put(sakura.id, sakura)
         val mistmint = MistmintHavenParser(loaderContext)
         put(mistmint.id, mistmint)
+        val sonic = SonicMtlParser(loaderContext)
+        put(sonic.id, sonic)
     }
 
     val sourcesRepository = SourcesRepository(sourceMap, db)

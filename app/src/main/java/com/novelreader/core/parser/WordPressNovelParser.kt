@@ -104,6 +104,10 @@ abstract class WordPressNovelParser(
             )
         }
         if (chapters.isEmpty()) chapters = parseChaptersExtra(doc, path)
+        // Madara themes list newest-first inside each container tab AND repeat the
+        // list across tabs — dedupe (buildChapterList) already ran, but the same
+        // chapter can appear in both the "chapters" and "latest" tabs of the page.
+        chapters = chapters.distinctBy { it.path.trimEnd('/').lowercase() }
 
         return NovelDetail(
             Novel(
