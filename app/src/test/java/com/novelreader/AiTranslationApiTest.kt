@@ -1,6 +1,7 @@
 package com.novelreader
 
 import com.novelreader.translate.AiTranslationApi
+import com.novelreader.translate.AiTranslationApi.Companion.isValidHttpUrl
 import okhttp3.RequestBody
 import okio.Buffer
 import org.json.JSONArray
@@ -135,5 +136,28 @@ class AiTranslationApiTest {
         val req = api.openAiRequest("s", "u")
         val media = req.body!!.contentType()!!.toString()
         assertTrue(media.startsWith("application/json"))
+    }
+
+    // ---- base URL validation (http/https only; no localhost/private/reserved) ----
+
+    @Test
+    fun url_validation_accepts_public_http_https() {
+        assertTrue("https://api.openai.com/v1".isValidHttpUrl())
+        assertTrue("http://api.hcnsec.cn/v1".isValidHttpUrl())
+        assertTrue("https://generativelanguage.googleapis.com/v1beta".isValidHttpUrl())
+    }
+
+    @Test
+    fun url_validation_rejects_local_and_private() {
+        assertTrue(!"http://localhost:1234/v1".isValidHttpUrl())
+        assertTrue(!"http://127.0.0.1:8080/v1".isValidHttpUrl())
+        assertTrue(!"http://10.0.0.5/v1".isValidHttpUrl())
+        assertTrue(!"http://172.16.0.9/v1".isValidHttpUrl())
+        assertTrue(!"http://192.168.1.10:1234/v1".isValidHttpUrl())
+        assertTrue(!"http://169.254.1.1/v1".isValidHttpUrl())
+        assertTrue(!"http://0.0.0.0/v1".isValidHttpUrl())
+        assertTrue(!"file:///etc/passwd".isValidHttpUrl())
+        assertTrue(!"ftp://example.com".isValidHttpUrl())
+        assertTrue(!"not a url".isValidHttpUrl())
     }
 }

@@ -82,7 +82,7 @@ class ReaderViewModel(private val container: AppContainer) : ViewModel() {
                 ) { p ->
                     when (p) {
                         is AiTranslationRepository.Progress.Running ->
-                            _aiProgress.value = AiProgress(true, p.doneBatches, p.totalBatches)
+                            _aiProgress.value = AiProgress(true, p.doneRequests, p.totalRequests)
                         else -> {}
                     }
                 }

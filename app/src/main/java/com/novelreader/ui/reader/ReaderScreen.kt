@@ -743,15 +743,11 @@ private fun AiTranslateSheet(
 
             if (progress.running) {
                 Text(
-                    "Menerjemahkan… ${progress.doneBatches}/${progress.totalBatches} batch",
+                    "Menerjemahkan seluruh bab…",
                     color = palette.muted,
                     style = MaterialTheme.typography.labelMedium,
                 )
                 LinearProgressIndicator(
-                    progress = {
-                        if (progress.totalBatches <= 0) 0f
-                        else progress.doneBatches.toFloat() / progress.totalBatches
-                    },
                     modifier = Modifier.fillMaxWidth(),
                     color = palette.accent,
                     trackColor = palette.muted.copy(alpha = 0.2f),

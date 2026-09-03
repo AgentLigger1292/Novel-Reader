@@ -36,6 +36,10 @@ class AiTranslationApi(
         .writeTimeout(60, TimeUnit.SECONDS)
         .build()
 
+    init {
+        require(baseUrl.isValidHttpUrl()) { "Base URL tidak valid: $baseUrl" }
+    }
+
     /**
      * Translate a batch of paragraphs. Each input string may contain inline HTML.
      * Returns one translated string per input, same order.
@@ -188,6 +192,46 @@ class AiTranslationApi(
          */
         private val THINKING_CAPABLE = Regex("""gemini-(2\.5|3|4)""")
         private val REASONING_OPENAI = Regex("""^(o\d|gpt-5|gpt-4\.1|deepseek-r)""")
+
+        /**
+         * Only http/https is allowed; localhost, loopback, link-local,
+         * private and other reserved hosts are rejected so a stray Base URL
+         * can never point the app at internal endpoints. Pure (no DNS) —
+         * hostname classification happens on literals; named hosts pass here
+         * and are resolved normally by OkHttp at request time. Unit-tested.
+         */
+        fun String.isValidHttpUrl(): Boolean {
+            val url = runCatching { java.net.URL(this) }.getOrNull() ?: return false
+            if (url.protocol != "http" && url.protocol != "https") return false
+            val host = url.host.lowercase()
+            if (host.isEmpty()) return false
+            if (host == "localhost" || host.endsWith(".localhost") || host.endsWith(".local")) return false
+            if (host == "0.0.0.0" || host == "255.255.255.255") return false
+            // IPv4/IPv6 literal → classify directly; named host → accept
+            val v4 = Regex("""^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$""").find(host)
+            if (v4 != null) {
+                val o = v4.groupValues.drop(1).map { it.toIntOrNull() ?: return false }
+                if (o.any { it !in 0..255 }) return false
+                val (a, b) = o
+                return when {
+                    a == 10 -> false                                   // 10/8
+                    a == 172 && b in 16..31 -> false                   // 172.16/12
+                    a == 192 && b == 168 -> false                      // 192.168/16
+                    a == 100 && b in 64..127 -> false                  // CGNAT 100.64/10
+                    a == 169 && b == 254 -> false                      // link-local
+                    a == 127 -> false                                  // loopback
+                    a == 0 -> false                                    // 0/8
+                    else -> true
+                }
+            }
+            if (host.contains(":")) { // IPv6 literal (URL.host keeps brackets off)
+                val addr = runCatching { java.net.InetAddress.getByName(host) }.getOrNull()
+                    ?: return false
+                return !(addr.isLoopbackAddress || addr.isLinkLocalAddress ||
+                    addr.isAnyLocalAddress || addr.isMulticastAddress)
+            }
+            return true
+        }
 
         /**
          * Parse model output back into an aligned list of [expected] paragraphs;
