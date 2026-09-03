@@ -238,7 +238,7 @@ fun DetailsScreen(
                                             val first = if (newestFirst) chapters.last() else chapters.first()
                                             onOpenChapter(first.chapterId, d.novel.title)
                                         },
-                                    ) { Text("Mulai Ch.1") }
+                                    ) { Text("Mulai dari Awal") }
                                     OutlinedButton(
                                         onClick = {
                                             val last = if (newestFirst) chapters.first() else chapters.last()

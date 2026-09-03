@@ -124,7 +124,9 @@ fun CfWebViewScreen(
         AndroidView(
             factory = { ctx ->
                 CookieManager.getInstance().setAcceptCookie(true)
-                WebView(ctx).apply {
+                // app context: SessionWebView keeps this WebView alive for the whole
+                // process — an Activity context here leaks the screen (QA finding)
+                WebView(ctx.applicationContext).apply {
                     settings.javaScriptEnabled = true
                     settings.domStorageEnabled = true
                     settings.userAgentString =

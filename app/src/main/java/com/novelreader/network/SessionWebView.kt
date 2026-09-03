@@ -18,6 +18,9 @@ class SessionBusyException : Exception(
     "Jaringan sibuk — tunggu sebentar lalu coba lagi (satu request WebView sekaligus).",
 )
 
+/** Thrown without touching the WebView when the device has no connectivity. */
+class OfflineException : Exception(NetworkStatus.OFFLINE_MESSAGE)
+
 /**
  * One long-lived WebView shared after the user clears CF.
  * All fetches are serialized (WebView is single-threaded / one load at a time).
@@ -27,6 +30,7 @@ object SessionWebView {
     private val main = Handler(Looper.getMainLooper())
     private var webView: WebView? = null
     private val fetchLock = ReentrantLock(true)
+    @Volatile private var appContext: Context? = null
 
     // cancel in-flight grab callbacks after timeout / adopt
     private val generation = java.util.concurrent.atomic.AtomicInteger(0)
@@ -35,7 +39,19 @@ object SessionWebView {
         main.post {
             if (webView === wv) return@post
             generation.incrementAndGet() // drop stale callbacks
-            // ponytail: keep old WebView if locked; GC later — destroy risk mid-fetch
+            // destroy the previous session WebView — it holds an Activity context,
+            // keeping it alive leaks the whole screen (QA: 4 activities after rotation)
+            val old = webView
+            if (old != null) {
+                try {
+                    old.stopLoading()
+                    old.loadUrl("about:blank")
+                    old.destroy()
+                    Log.i(TAG, "previous session WebView destroyed")
+                } catch (e: Exception) {
+                    Log.w(TAG, "old webview destroy: ${e.message}")
+                }
+            }
             webView = wv
             Log.i(TAG, "SessionWebView adopted")
         }
@@ -46,6 +62,7 @@ object SessionWebView {
     @SuppressLint("SetJavaScriptEnabled")
     fun ensure(context: Context) {
         // real session comes from CF screen adopt()
+        if (appContext == null) appContext = context.applicationContext
     }
 
     fun getHtml(url: String, timeoutSec: Long = 55): String {
@@ -66,6 +83,12 @@ object SessionWebView {
     }
 
     private fun getHtmlLocked(url: String, timeoutSec: Long): String {
+        // fail fast when offline — a hung WebView load used to block the full
+        // timeout (55s spinner) and trip Samsung ANR detection (QA P1)
+        val ctx = appContext
+        if (ctx != null && !NetworkStatus.isOnline(ctx)) {
+            throw OfflineException()
+        }
         val latch = CountDownLatch(1)
         val result = AtomicReference<String?>(null)
         val error = AtomicReference<String?>(null)

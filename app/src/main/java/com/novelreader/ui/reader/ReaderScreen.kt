@@ -58,6 +58,8 @@ import com.novelreader.core.AppVmFactory
 import com.novelreader.core.parser.SourcesRepository
 import com.novelreader.data.NovelCache
 import com.novelreader.model.Chapter
+import com.novelreader.network.NetworkStatus
+import com.novelreader.network.OfflineException
 import com.novelreader.ui.ReaderBg
 import com.novelreader.ui.ReaderFontType
 import com.novelreader.ui.ReaderTts
@@ -196,6 +198,10 @@ fun ReaderScreen(
                     }
                 }
             }
+        } catch (e: OfflineException) {
+            // instant, friendly — no CF prompt, no retry storm
+            error = NetworkStatus.OFFLINE_MESSAGE
+            paragraphs = listOf(NetworkStatus.OFFLINE_MESSAGE)
         } catch (e: Exception) {
             val offline = withContext(Dispatchers.IO) {
                 container.downloads.readChapterHtml(sourceId, novelPath, chapterPath)
