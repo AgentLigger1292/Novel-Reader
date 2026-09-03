@@ -17,10 +17,6 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExposedDropdownMenuBox
-import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -31,12 +27,11 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.novelreader.core.AppVmFactory
@@ -44,10 +39,9 @@ import com.novelreader.core.AppContainer
 import com.novelreader.ui.NovelGridCard
 
 /**
- * Kotatsu Explore screen: source picker + paged popular/search grid with
+ * Kotatsu Explore screen: source tile grid + paged popular/search grid with
  * infinite scroll load-more.
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ExploreScreen(
     container: AppContainer,
@@ -56,10 +50,14 @@ fun ExploreScreen(
     vm: ExploreViewModel = viewModel(factory = AppVmFactory(container)),
 ) {
     val state by vm.state.collectAsState()
-    var sourceMenu by remember { mutableStateOf(false) }
-    var coverTick by remember { androidx.compose.runtime.mutableIntStateOf(0) }
+    var coverTick by remember { mutableIntStateOf(0) }
     val gridState = rememberLazyGridState()
     val source = container.source(state.sourceId)
+    val sourceItems = remember {
+        container.sourcesRepository.all
+            .filter { it.id != "dummy" }
+            .map { SourceUiItem(it.id, it.name, it.siteUrl) }
+    }
 
     // infinite scroll: when near the bottom, ask for the next page
     val nearEnd by remember {
@@ -74,41 +72,28 @@ fun ExploreScreen(
     }
 
     Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        ExposedDropdownMenuBox(expanded = sourceMenu, onExpandedChange = { sourceMenu = it }) {
-            OutlinedTextField(
-                value = source.name,
-                onValueChange = {},
-                readOnly = true,
-                label = { Text("Source") },
-                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(sourceMenu) },
-                modifier = Modifier.menuAnchor().fillMaxWidth(),
-            )
-            androidx.compose.material3.DropdownMenu(
-                expanded = sourceMenu,
-                onDismissRequest = { sourceMenu = false },
-            ) {
-                container.sourcesRepository.all.forEach { s ->
-                    DropdownMenuItem(
-                        text = { Text(s.name) },
-                        onClick = {
-                            vm.selectSource(s.id)
-                            sourceMenu = false
-                        },
-                    )
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("Sumber novel", style = MaterialTheme.typography.titleLarge)
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                if (source.siteUrl != null) {
+                    IconButton(onClick = { onOpenCf(source.siteUrl!!) }) {
+                        Icon(Icons.Default.Security, contentDescription = "Buka CF")
+                    }
+                }
+                IconButton(onClick = { vm.reload() }) {
+                    Icon(Icons.Default.Refresh, contentDescription = "Reload")
                 }
             }
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            if (source.siteUrl != null) {
-                Button(onClick = { onOpenCf(source.siteUrl!!) }) {
-                    Icon(Icons.Default.Security, null)
-                    Text(" CF", Modifier.padding(start = 4.dp))
-                }
-            }
-            IconButton(onClick = { vm.reload() }) {
-                androidx.compose.material3.Icon(Icons.Default.Refresh, "Reload")
-            }
-        }
+        SourceGrid(
+            sources = sourceItems,
+            selectedId = state.sourceId,
+            onSelect = { vm.selectSource(it) },
+        )
         OutlinedTextField(
             value = state.query,
             onValueChange = { vm.onQueryChanged(it) },
