@@ -19,6 +19,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.VolumeOff
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.Translate
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -28,6 +29,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
@@ -95,9 +97,12 @@ fun ReaderScreen(
     var fontType by remember { mutableStateOf(settings.readerFontType) }
     var alignJustify by remember { mutableStateOf(settings.readerJustify) }
     var showSettings by remember { mutableStateOf(false) }
+    var showAi by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var loading by remember { mutableStateOf(true) }
     var pendingResumeScroll by remember { mutableStateOf<Float?>(null) }
+    var originalParagraphs by remember { mutableStateOf(listOf<String>()) }
+    var translated by remember { mutableStateOf(false) }
 
     val novelId = SourcesRepository.novelKey(sourceId, novelPath)
     val source = container.source(sourceId)
@@ -108,6 +113,7 @@ fun ReaderScreen(
     val tts = remember { ReaderTts(context) }
     val isPlayingTts by tts.isPlaying.collectAsState()
     val ttsIndex by tts.currentIndex.collectAsState()
+    val aiProgress by vm.aiProgress.collectAsState()
     DisposableEffect(Unit) {
         onDispose {
             tts.shutdown()
@@ -153,6 +159,7 @@ fun ReaderScreen(
         val memCached = NovelCache.getChapter(chapterPath)
         if (memCached != null) {
             paragraphs = htmlToParagraphs(memCached)
+            originalParagraphs = paragraphs
             loading = false
         } else {
             loading = true
@@ -173,6 +180,7 @@ fun ReaderScreen(
                 htmlToParagraphs(body) to (!offline.isNullOrBlank())
             }
             paragraphs = content.first
+            originalParagraphs = paragraphs
             chapterName = if (content.second) {
                 "${novelTitle.ifBlank { "Chapter" }} · offline"
             } else {
@@ -215,6 +223,32 @@ fun ReaderScreen(
             }
         } finally {
             loading = false
+        }
+    }
+
+    // chapter switch resets the AI translation view
+    LaunchedEffect(chapterPath) {
+        translated = false
+    }
+
+    fun toggleTranslate() {
+        when {
+            translated -> {
+                paragraphs = originalParagraphs
+                translated = false
+            }
+            aiProgress.running -> showAi = true // watch progress / cancel
+            !vm.aiConfigured() -> showAi = true // configure provider first
+            paragraphs.size > 1 -> {
+                vm.translate(
+                    novelId, chapterPath, paragraphs,
+                    onResult = { result, _ ->
+                        paragraphs = result
+                        translated = true
+                    },
+                    onError = { showAi = true }, // surface the error in the sheet
+                )
+            }
         }
     }
 
@@ -300,6 +334,16 @@ fun ReaderScreen(
                             else Icons.AutoMirrored.Filled.VolumeUp,
                             if (isPlayingTts) "Stop TTS" else "Read Aloud",
                             tint = if (isPlayingTts) pal.accent else pal.text,
+                        )
+                    }
+                    IconButton(
+                        enabled = !loading && paragraphs.isNotEmpty(),
+                        onClick = { toggleTranslate() },
+                    ) {
+                        Icon(
+                            Icons.Default.Translate,
+                            if (translated) "Tampilkan asli" else "AI Translate",
+                            tint = if (translated || aiProgress.running) pal.accent else pal.text,
                         )
                     }
                     if (error != null && source.siteUrl != null) {
@@ -553,6 +597,203 @@ fun ReaderScreen(
                     )
                 }
             }
+        }
+        if (showAi) {
+            AiTranslateSheet(
+                container = container,
+                progress = aiProgress,
+                translated = translated,
+                palette = pal,
+                onDismiss = { showAi = false },
+                onTranslate = {
+                    if (translated) {
+                        paragraphs = originalParagraphs
+                        translated = false
+                    } else if (paragraphs.size > 1) {
+                        vm.translate(
+                            novelId, chapterPath, paragraphs,
+                            onResult = { result, _ ->
+                                paragraphs = result
+                                translated = true
+                            },
+                            onError = { },
+                        )
+                    }
+                },
+                onCancel = { vm.cancelTranslate() },
+            )
+        }
+    }
+}
+
+/**
+ * AI Translate sheet: provider config (Gemini native / any OpenAI-compatible
+ * endpoint) + per-batch progress. Fields write straight through to
+ * [com.novelreader.core.prefs.AppSettings] so the next chapter uses them.
+ */
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@Composable
+private fun AiTranslateSheet(
+    container: AppContainer,
+    progress: ReaderViewModel.AiProgress,
+    translated: Boolean,
+    palette: com.novelreader.ui.ReaderPalette,
+    onDismiss: () -> Unit,
+    onTranslate: () -> Unit,
+    onCancel: () -> Unit,
+) {
+    val settings = container.settings
+    var provider by remember { mutableStateOf(settings.aiProvider) }
+    var baseUrl by remember { mutableStateOf(settings.aiBaseUrl) }
+    var apiKey by remember { mutableStateOf(settings.aiKey) }
+    var model by remember { mutableStateOf(settings.aiModel) }
+    var lang by remember { mutableStateOf(settings.aiTargetLang) }
+
+    fun save() {
+        settings.aiProvider = provider
+        settings.aiBaseUrl = baseUrl
+        settings.aiKey = apiKey
+        settings.aiModel = model
+        settings.aiTargetLang = lang
+    }
+
+    ModalBottomSheet(
+        onDismissRequest = { onDismiss() },
+        containerColor = palette.surface,
+        contentColor = palette.text,
+    ) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 32.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text(
+                "AI Translate",
+                style = MaterialTheme.typography.titleMedium,
+                color = palette.text,
+            )
+            Text("Provider", color = palette.muted, style = MaterialTheme.typography.labelLarge)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf(
+                    com.novelreader.translate.AiTranslationApi.PROVIDER_GEMINI to "Gemini API",
+                    com.novelreader.translate.AiTranslationApi.PROVIDER_OPENAI to "OpenAI-compatible",
+                ).forEach { (id, label) ->
+                    val selected = provider == id
+                    OutlinedButton(
+                        onClick = { provider = id },
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.weight(1f),
+                        border = androidx.compose.foundation.BorderStroke(
+                            width = if (selected) 2.dp else 1.dp,
+                            color = if (selected) palette.accent else palette.muted.copy(alpha = 0.3f),
+                        ),
+                    ) {
+                        Text(
+                            label,
+                            color = if (selected) palette.accent else palette.text,
+                            style = MaterialTheme.typography.labelMedium,
+                            maxLines = 1,
+                        )
+                    }
+                }
+            }
+            OutlinedTextField(
+                value = baseUrl,
+                onValueChange = { baseUrl = it; save() },
+                enabled = provider == com.novelreader.translate.AiTranslationApi.PROVIDER_OPENAI,
+                label = { Text("Base URL") },
+                placeholder = { Text("https://api.openai.com/v1") },
+                singleLine = true,
+                textStyle = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            OutlinedTextField(
+                value = apiKey,
+                onValueChange = { apiKey = it; save() },
+                label = { Text(if (provider == com.novelreader.translate.AiTranslationApi.PROVIDER_GEMINI) "Gemini API key" else "API key") },
+                placeholder = { Text("tempel API key di sini") },
+                singleLine = true,
+                textStyle = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            OutlinedTextField(
+                value = model,
+                onValueChange = { model = it; save() },
+                label = { Text("Model") },
+                placeholder = {
+                    Text(
+                        if (provider == com.novelreader.translate.AiTranslationApi.PROVIDER_GEMINI) "gemini-2.0-flash" else "gpt-4o-mini",
+                    )
+                },
+                singleLine = true,
+                textStyle = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            OutlinedTextField(
+                value = lang,
+                onValueChange = { lang = it; save() },
+                label = { Text("Bahasa target") },
+                placeholder = { Text("Indonesian") },
+                singleLine = true,
+                textStyle = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.fillMaxWidth(),
+            )
+
+            if (progress.running) {
+                Text(
+                    "Menerjemahkan… ${progress.doneBatches}/${progress.totalBatches} batch",
+                    color = palette.muted,
+                    style = MaterialTheme.typography.labelMedium,
+                )
+                LinearProgressIndicator(
+                    progress = {
+                        if (progress.totalBatches <= 0) 0f
+                        else progress.doneBatches.toFloat() / progress.totalBatches
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    color = palette.accent,
+                    trackColor = palette.muted.copy(alpha = 0.2f),
+                )
+            } else if (progress.fromCache && translated) {
+                Text(
+                    "Hasil dari cache (model & bahasa sama).",
+                    color = palette.muted,
+                    style = MaterialTheme.typography.labelMedium,
+                )
+            }
+            progress.error?.let { err ->
+                Text(
+                    err,
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            if (translated) {
+                OutlinedButton(onClick = onTranslate, modifier = Modifier.fillMaxWidth()) {
+                    Text("Tampilkan Teks Asli")
+                }
+            } else if (progress.running) {
+                OutlinedButton(onClick = onCancel, modifier = Modifier.fillMaxWidth()) {
+                    Text("Batalkan")
+                }
+            } else {
+                Button(
+                    onClick = onTranslate,
+                    enabled = apiKey.isNotBlank(),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text("Terjemahkan Bab Ini")
+                }
+            }
+            Text(
+                "Hasil diterjemahkan disimpan per bab + bahasa + model. " +
+                    "Layanan lokal (Ollama/LM Studio) via http:// tidak bisa diakses " +
+                    "karena aplikasi memblokir cleartext.",
+                color = palette.muted,
+                style = MaterialTheme.typography.labelSmall,
+            )
         }
     }
 }

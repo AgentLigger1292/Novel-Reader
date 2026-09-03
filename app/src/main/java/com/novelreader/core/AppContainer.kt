@@ -15,6 +15,7 @@ import com.novelreader.source.MistmintHavenParser
 import com.novelreader.source.NovelSource
 import com.novelreader.source.SakuraNovelParser
 import com.novelreader.source.SonicMtlParser
+import com.novelreader.translate.AiTranslationRepository
 
 /**
  * Manual dependency container (Kotatsu-style).
@@ -46,6 +47,7 @@ class AppContainer(context: Context) {
     val historyRepository = HistoryRepository(db)
     val favouritesRepository = FavouritesRepository(db)
     val trackerRepository = TrackerRepository(db)
+    val aiTranslation = AiTranslationRepository(db.translationsDao())
 
     /** Offline storage — folder format unchanged. */
     val downloads = DownloadStore(appContext)

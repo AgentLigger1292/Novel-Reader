@@ -51,6 +51,30 @@ class AppSettings(context: Context) {
         get() = prefs.getInt(KEY_TRACKER_INTERVAL, 6).coerceIn(1, 24)
         set(value) = prefs.edit().putInt(KEY_TRACKER_INTERVAL, value.coerceIn(1, 24)).apply()
 
+    // ---- AI translation ----
+    /** "gemini" (Google AI) or "openai" (any OpenAI-compatible endpoint). */
+    var aiProvider: String
+        get() = prefs.getString(KEY_AI_PROVIDER, null) ?: "gemini"
+        set(value) = prefs.edit().putString(KEY_AI_PROVIDER, value).apply()
+
+    /** Base URL for the OpenAI-compatible provider, e.g. https://api.openai.com/v1 or a LAN LLM server. */
+    var aiBaseUrl: String
+        get() = prefs.getString(KEY_AI_BASE_URL, null) ?: "https://api.openai.com/v1"
+        set(value) = prefs.edit().putString(KEY_AI_BASE_URL, value.trim().trimEnd('/')).apply()
+
+    /** Secret entered by the user at runtime; stored in app-private prefs (not backed up to VCS). */
+    var aiKey: String
+        get() = prefs.getString(KEY_AI_KEY, null).orEmpty()
+        set(value) = prefs.edit().putString(KEY_AI_KEY, value.trim()).apply()
+
+    var aiModel: String
+        get() = prefs.getString(KEY_AI_MODEL, null) ?: "gemini-2.0-flash"
+        set(value) = prefs.edit().putString(KEY_AI_MODEL, value.trim()).apply()
+
+    var aiTargetLang: String
+        get() = prefs.getString(KEY_AI_LANG, null) ?: "Indonesian"
+        set(value) = prefs.edit().putString(KEY_AI_LANG, value.trim()).apply()
+
     companion object {
         private const val KEY_FONT_SP = "reader.font_sp"
         private const val KEY_LINE_MUL = "reader.line_mul"
@@ -60,5 +84,10 @@ class AppSettings(context: Context) {
         private const val KEY_SOURCE = "sources.selected"
         private const val KEY_TRACKER_ENABLED = "tracker.enabled"
         private const val KEY_TRACKER_INTERVAL = "tracker.interval_hours"
+        private const val KEY_AI_PROVIDER = "ai.provider"
+        private const val KEY_AI_BASE_URL = "ai.base_url"
+        private const val KEY_AI_KEY = "ai.key"
+        private const val KEY_AI_MODEL = "ai.model"
+        private const val KEY_AI_LANG = "ai.target_lang"
     }
 }

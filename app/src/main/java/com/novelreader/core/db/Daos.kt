@@ -157,3 +157,20 @@ interface TracksDao {
     @Upsert
     suspend fun upsert(track: TrackEntity)
 }
+
+@Dao
+interface TranslationsDao {
+    @Query(
+        "SELECT * FROM translations WHERE novelId = :novelId AND chapterId = :chapterId " +
+            "AND targetLang = :lang AND model = :model",
+    )
+    suspend fun find(novelId: String, chapterId: String, lang: String, model: String): TranslationEntity?
+
+    @Upsert
+    suspend fun upsert(translation: TranslationEntity)
+
+    @Query(
+        "DELETE FROM translations WHERE novelId = :novelId AND chapterId = :chapterId",
+    )
+    suspend fun deleteChapter(novelId: String, chapterId: String)
+}

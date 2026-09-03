@@ -78,3 +78,21 @@ data class TrackEntity(
     val lastChapterCount: Int,
     val lastCheckTime: Long,
 )
+
+/**
+ * AI-translated chapter body, keyed by novel+chapter+lang+model so a change
+ * of model or target language re-translates instead of serving the old result.
+ */
+@Entity(
+    tableName = "translations",
+    indices = [Index("novelId")],
+)
+data class TranslationEntity(
+    @PrimaryKey val id: String, // "novelId|chapterId|lang|model"
+    val novelId: String,
+    val chapterId: String,
+    val targetLang: String,
+    val model: String,
+    val translatedHtml: String,
+    val createdAt: Long,
+)
