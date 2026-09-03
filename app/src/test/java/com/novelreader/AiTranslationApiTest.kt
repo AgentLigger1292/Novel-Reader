@@ -68,7 +68,7 @@ class AiTranslationApiTest {
     @Test
     fun gemini_request_hits_generateContent_with_api_key_header() {
         val api = AiTranslationApi("gemini", "https://generativelanguage.googleapis.com/v1beta", "K1", "gemini-2.0-flash")
-        val req = api.geminiRequest("SYS", "[1] halo")
+        val req = api.geminiRequest("SYS", "[1] halo", stream = false)
         assertEquals(
             "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent",
             req.url.toString(),
@@ -89,7 +89,7 @@ class AiTranslationApiTest {
     @Test
     fun openai_request_hits_chatCompletions_with_bearer() {
         val api = AiTranslationApi("openai", "https://api.openai.com/v1", "K2", "gpt-4o-mini")
-        val req = api.openAiRequest("SYS", "[1] halo")
+        val req = api.openAiRequest("SYS", "[1] halo", stream = false)
         assertEquals("https://api.openai.com/v1/chat/completions", req.url.toString())
         assertEquals("Bearer K2", req.header("Authorization"))
 
@@ -104,7 +104,7 @@ class AiTranslationApiTest {
     @Test
     fun openai_request_body_is_json_content_type() {
         val api = AiTranslationApi("openai", "https://x/v1", "k", "m")
-        val req = api.openAiRequest("s", "u")
+        val req = api.openAiRequest("s", "u", stream = false)
         val media = req.body!!.contentType()!!.toString()
         assertTrue(media.startsWith("application/json"))
     }
@@ -133,9 +133,31 @@ class AiTranslationApiTest {
     @Test
     fun json_request_body_content_type_is_json() {
         val api = AiTranslationApi("openai", "https://x/v1", "k", "m")
-        val req = api.openAiRequest("s", "u")
+        val req = api.openAiRequest("s", "u", stream = false)
         val media = req.body!!.contentType()!!.toString()
         assertTrue(media.startsWith("application/json"))
+    }
+
+    @Test
+    fun openai_stream_request_sets_stream_flag() {
+        val api = AiTranslationApi("openai", "https://x/v1", "k", "m")
+        val req = api.openAiRequest("s", "u", stream = true)
+        assertTrue(requestBodyJson(req.body!!).getBoolean("stream"))
+    }
+
+    @Test
+    fun gemini_stream_request_uses_streamGenerateContent_endpoint() {
+        val api = AiTranslationApi("gemini", "https://generativelanguage.googleapis.com/v1beta", "K", "gemini-2.0-flash")
+        val req = api.geminiRequest("SYS", "u", stream = true)
+        assertTrue(req.url.toString().contains(":streamGenerateContent?alt=sse"))
+    }
+
+    @Test
+    fun gemini_thinking_budget_zero_for_25_and_up() {
+        val api = AiTranslationApi("gemini", "https://x", "k", "gemini-3.6-flash")
+        val req = api.geminiRequest("S", "u", stream = false)
+        val cfg = requestBodyJson(req.body!!).getJSONObject("generationConfig")
+        assertEquals(0, cfg.getJSONObject("thinkingConfig").getInt("thinkingBudget"))
     }
 
     // ---- base URL validation (http/https only; no localhost/private/reserved) ----

@@ -26,8 +26,6 @@ class ReaderViewModel(private val container: AppContainer) : ViewModel() {
 
     data class AiProgress(
         val running: Boolean,
-        val doneBatches: Int = 0,
-        val totalBatches: Int = 0,
         val fromCache: Boolean = false,
         val error: String? = null,
     )
@@ -35,20 +33,25 @@ class ReaderViewModel(private val container: AppContainer) : ViewModel() {
     private val _aiProgress = MutableStateFlow(AiProgress(running = false))
     val aiProgress: StateFlow<AiProgress> = _aiProgress.asStateFlow()
 
+    /** Translated paragraphs that have streamed in so far (index → text). */
+    private val _aiLive = MutableStateFlow<Map<Int, String>>(emptyMap())
+    val aiLive: StateFlow<Map<Int, String>> = _aiLive.asStateFlow()
+
     private var translateJob: Job? = null
 
     fun aiConfigured(): Boolean = container.settings.aiKey.isNotBlank()
 
     /**
-     * Translate [paragraphs]: serve the Room cache when present (same
-     * lang+model), otherwise batch through the configured provider and store.
-     * Returns the translated list, same order/size as the input.
+     * Translate [paragraphs] with live streaming: the Room cache is served
+     * when present (same lang+model); otherwise the chapter streams through
+     * the configured provider — each completed paragraph is published via
+     * [onLive] (index, text) and onLiveFinal replaces the whole list.
      */
     fun translate(
         novelId: String,
         chapterId: String,
         paragraphs: List<String>,
-        onResult: (List<String>, fromCache: Boolean) -> Unit,
+        onLiveFinal: (List<String>, fromCache: Boolean) -> Unit,
         onError: (String) -> Unit,
     ) {
         if (_aiProgress.value.running) return
@@ -64,6 +67,7 @@ class ReaderViewModel(private val container: AppContainer) : ViewModel() {
         translateJob?.cancel()
         translateJob = viewModelScope.launch {
             _aiProgress.value = AiProgress(running = true)
+            _aiLive.value = emptyMap()
             try {
                 val cached = container.aiTranslation.getCached(novelId, chapterId, lang, model)
                 if (cached != null) {
@@ -71,25 +75,24 @@ class ReaderViewModel(private val container: AppContainer) : ViewModel() {
                     val restored = com.novelreader.ui.htmlToParagraphs(html)
                     if (restored.size == paragraphs.size) {
                         _aiProgress.value = AiProgress(running = false, fromCache = true)
-                        onResult(restored, true)
+                        onLiveFinal(restored, true)
                         return@launch
                     }
                     // cached under a different paragraph layout → stale, drop
                     container.aiTranslation.invalidate(novelId, chapterId)
                 }
-                val translated = container.aiTranslation.translateParagraphs(
-                    api, novelId, chapterId, paragraphs, lang,
-                ) { p ->
-                    when (p) {
-                        is AiTranslationRepository.Progress.Running ->
-                            _aiProgress.value = AiProgress(true, p.doneRequests, p.totalRequests)
-                        else -> {}
-                    }
-                }
+                val translated = container.aiTranslation.translateChapter(
+                    api, paragraphs, lang,
+                    onLive = { idx, text ->
+                        _aiLive.value = _aiLive.value + (idx to text)
+                    },
+                ) { }
                 container.aiTranslation.store(novelId, chapterId, lang, model, translated)
+                _aiLive.value = emptyMap()
                 _aiProgress.value = AiProgress(running = false, fromCache = false)
-                onResult(translated, false)
+                onLiveFinal(translated, false)
             } catch (e: kotlinx.coroutines.CancellationException) {
+                _aiLive.value = emptyMap()
                 _aiProgress.value = AiProgress(running = false)
                 throw e
             } catch (e: Exception) {
@@ -102,6 +105,7 @@ class ReaderViewModel(private val container: AppContainer) : ViewModel() {
 
     fun cancelTranslate() {
         translateJob?.cancel()
+        _aiLive.value = emptyMap()
         _aiProgress.value = AiProgress(running = false)
     }
 

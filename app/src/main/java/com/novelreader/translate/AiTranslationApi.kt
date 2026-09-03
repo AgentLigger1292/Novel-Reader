@@ -1,11 +1,13 @@
 package com.novelreader.translate
 
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.Response
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
@@ -13,9 +15,11 @@ import java.util.concurrent.TimeUnit
 /**
  * Minimal AI translation client with two provider modes:
  *  - [PROVIDER_GEMINI]: Google Gemini native API (`v1beta generateContent`,
- *    key sent via `x-goog-api-key` header).
+ *    key sent via `x-goog-api-key` header). Supports streaming via
+ *    `:streamGenerateContent?alt=sse`.
  *  - [PROVIDER_OPENAI]: any OpenAI-compatible Chat Completions endpoint —
- *    OpenAI, OpenRouter, Groq, Ollama (v1), LM Studio, vLLM, …
+ *    OpenAI, OpenRouter, Groq, Ollama, LM Studio, vLLM, … Supports SSE
+ *    streaming when `"stream": true` is set.
  *
  * Both modes share the numbered-paragraph protocol: paragraphs are sent as
  * "[N] text" lines and the model must answer one "[N] translation" per line;
@@ -40,37 +44,103 @@ class AiTranslationApi(
         require(baseUrl.isValidHttpUrl()) { "Base URL tidak valid: $baseUrl" }
     }
 
+    // ---- non-streaming (used by tests, fallback) ----
+
     /**
-     * Translate a batch of paragraphs. Each input string may contain inline HTML.
+     * Translate a batch of paragraphs in one request (non-streaming).
      * Returns one translated string per input, same order.
      */
     suspend fun translateBatch(texts: List<String>, targetLang: String): List<String> =
         withContext(Dispatchers.IO) {
             if (texts.isEmpty()) return@withContext emptyList()
-
             val userContent = texts.mapIndexed { i, t -> "[${i + 1}] $t" }.joinToString("\n")
-            val systemPrompt = systemPrompt(targetLang)
-
+            val sp = systemPrompt(targetLang)
             val request = when (provider) {
-                PROVIDER_GEMINI -> geminiRequest(systemPrompt, userContent)
-                else -> openAiRequest(systemPrompt, userContent)
+                PROVIDER_GEMINI -> geminiRequest(sp, userContent, stream = false)
+                else -> openAiRequest(sp, userContent, stream = false)
             }
-
-            client.newCall(request).execute().use { resp ->
-                val respBody = resp.body?.string().orEmpty()
-                if (!resp.isSuccessful) {
-                    val msg = parseErrorMessage(respBody) ?: "HTTP ${resp.code}"
-                    throw TranslationException(msg, resp.code)
-                }
-                val content = when (provider) {
-                    PROVIDER_GEMINI -> parseGeminiContent(respBody)
-                    else -> parseOpenAiContent(respBody)
-                }
-                alignResults(content, texts.size)
-            }
+            val content = executeAndParse(request)
+            alignResults(content, texts.size)
         }
 
-    fun systemPrompt(targetLang: String): String = buildString {
+    // ---- streaming (for responsive live UI) ----
+
+    /**
+     * Translate ALL paragraphs via SSE streaming.
+     * [onDelta] is called with every clean text delta as it arrives (feed it
+     * to a [StreamParser] to get live paragraphs). Returns the FULL
+     * accumulated response text at the end.
+     */
+    suspend fun streamTranslateBatch(
+        texts: List<String>,
+        targetLang: String,
+        onDelta: (String) -> Unit,
+    ): String = withContext(Dispatchers.IO) {
+        if (texts.isEmpty()) return@withContext ""
+        val userContent = texts.mapIndexed { i, t -> "[${i + 1}] $t" }.joinToString("\n")
+        val sp = systemPrompt(targetLang)
+        val request = when (provider) {
+            PROVIDER_GEMINI -> geminiRequest(sp, userContent, stream = true)
+            else -> openAiRequest(sp, userContent, stream = true)
+        }
+        val full = StringBuilder()
+        client.newCall(request).execute().use { resp ->
+            if (!resp.isSuccessful) {
+                val body = resp.body?.string().orEmpty()
+                val msg = parseErrorMessage(body) ?: "HTTP ${resp.code}"
+                throw TranslationException(msg, resp.code)
+            }
+            val source = resp.body?.source()
+                ?: throw TranslationException("Respons tanpa body")
+            while (isActive) {
+                val line = source.readUtf8Line() ?: break
+                val trimmed = line.trim()
+                if (!trimmed.startsWith("data:")) continue // SSE comment/heartbeat
+                val json = trimmed.removePrefix("data:").trim()
+                if (json == "[DONE]") break
+                val delta = when (provider) {
+                    PROVIDER_GEMINI -> geminiDelta(json)
+                    else -> openAiDelta(json)
+                }
+                if (delta.isNotEmpty()) {
+                    onDelta(delta)
+                    full.append(delta)
+                }
+            }
+        }
+        full.toString()
+    }
+
+    /** Extract the text delta from one Gemini SSE event (may be empty). */
+    private fun geminiDelta(json: String): String {
+        if (json.isEmpty()) return ""
+        return runCatching {
+            JSONObject(json)
+                .optJSONArray("candidates")
+                ?.optJSONObject(0)
+                ?.optJSONObject("content")
+                ?.optJSONArray("parts")
+                ?.optJSONObject(0)
+                ?.optString("text")
+                .orEmpty()
+        }.getOrDefault("")
+    }
+
+    /** Extract the text delta from one OpenAI-compatible SSE event (may be empty). */
+    private fun openAiDelta(json: String): String {
+        if (json.isEmpty()) return ""
+        return runCatching {
+            val choice = JSONObject(json).optJSONArray("choices")?.optJSONObject(0)
+                ?: return ""
+            val delta = choice.optJSONObject("delta")?.optString("content")
+            if (!delta.isNullOrEmpty()) delta
+            else choice.optJSONObject("message")?.optString("content").orEmpty()
+        }.getOrDefault("")
+    }
+
+    // ---- providers ----
+
+    internal fun systemPrompt(targetLang: String): String = buildString {
         append("You are a professional novel translator. ")
         append("Translate the following numbered paragraphs into $targetLang. ")
         append("Rules: preserve the [N] numbering exactly; translate each paragraph on its own line; ")
@@ -81,12 +151,17 @@ class AiTranslationApi(
 
     // ---- Gemini native (v1beta generateContent) ----
 
-    internal fun geminiRequest(systemPrompt: String, userContent: String): Request {
-        val url = "$baseUrl/models/$model:generateContent"
+    internal fun geminiRequest(
+        systemPrompt: String,
+        userContent: String,
+        stream: Boolean,
+    ): Request {
+        val url = if (stream) {
+            "$baseUrl/models/$model:streamGenerateContent?alt=sse"
+        } else {
+            "$baseUrl/models/$model:generateContent"
+        }
         val generationConfig = JSONObject().put("temperature", 0.3)
-        // 2.5+/3.x models think by default (30-90s per request!) — translation
-        // needs no reasoning; disable it. Older models reject the field, so
-        // only send it to models known to support thinkingConfig.
         if (THINKING_CAPABLE.containsMatchIn(model)) {
             generationConfig.put(
                 "thinkingConfig",
@@ -121,6 +196,48 @@ class AiTranslationApi(
             .build()
     }
 
+    // ---- OpenAI-compatible (chat/completions) ----
+
+    internal fun openAiRequest(
+        systemPrompt: String,
+        userContent: String,
+        stream: Boolean,
+    ): Request {
+        val body = JSONObject().apply {
+            put("model", model)
+            put("temperature", 0.3)
+            put("stream", stream)
+            put("messages", JSONArray().apply {
+                put(JSONObject().put("role", "system").put("content", systemPrompt))
+                put(JSONObject().put("role", "user").put("content", userContent))
+            })
+            if (REASONING_OPENAI.containsMatchIn(model)) {
+                put("reasoning_effort", "low")
+            }
+        }
+        return Request.Builder()
+            .url("$baseUrl/chat/completions")
+            .addHeader("Authorization", "Bearer $apiKey")
+            .post(body.toString().toRequestBody(JSON_MEDIA))
+            .build()
+    }
+
+    // ---- response parsing ----
+
+    private fun executeAndParse(request: Request): String {
+        client.newCall(request).execute().use { resp ->
+            val body = resp.body?.string().orEmpty()
+            if (!resp.isSuccessful) {
+                val msg = parseErrorMessage(body) ?: "HTTP ${resp.code}"
+                throw TranslationException(msg, resp.code)
+            }
+            return when (provider) {
+                PROVIDER_GEMINI -> parseGeminiContent(body)
+                else -> parseOpenAiContent(body)
+            }
+        }
+    }
+
     private fun parseGeminiContent(body: String): String {
         val json = runCatching { JSONObject(body) }.getOrNull()
             ?: throw TranslationException("Respons bukan JSON: ${body.take(120)}")
@@ -134,29 +251,6 @@ class AiTranslationApi(
             sb.append(parts.optJSONObject(i)?.optString("text").orEmpty())
         }
         return sb.toString()
-    }
-
-    // ---- OpenAI-compatible (chat/completions) ----
-
-    internal fun openAiRequest(systemPrompt: String, userContent: String): Request {
-        val body = JSONObject().apply {
-            put("model", model)
-            put("temperature", 0.3)
-            put("messages", JSONArray().apply {
-                put(JSONObject().put("role", "system").put("content", systemPrompt))
-                put(JSONObject().put("role", "user").put("content", userContent))
-            })
-            // reasoning models burn 30s+ per request by default; keep them on
-            // the lowest effort. Plain chat models ignore the field.
-            if (REASONING_OPENAI.containsMatchIn(model)) {
-                put("reasoning_effort", "low")
-            }
-        }
-        return Request.Builder()
-            .url("$baseUrl/chat/completions")
-            .addHeader("Authorization", "Bearer $apiKey")
-            .post(body.toString().toRequestBody(JSON_MEDIA))
-            .build()
     }
 
     private fun parseOpenAiContent(body: String): String {
@@ -173,6 +267,8 @@ class AiTranslationApi(
         return content
     }
 
+    // ---- error parsing + validation ----
+
     private fun parseErrorMessage(body: String): String? = try {
         JSONObject(body).optJSONObject("error")?.optString("message")?.takeIf { it.isNotBlank() }
     } catch (_: Exception) {
@@ -185,11 +281,6 @@ class AiTranslationApi(
 
         private val JSON_MEDIA = "application/json; charset=utf-8".toMediaType()
 
-        /**
-         * Gemini models that accept generationConfig.thinkingConfig.
-         * gemini-2.5* and 3.x think by default — the single biggest cause of
-         * "translation is slow" (30-90s of hidden reasoning per batch).
-         */
         private val THINKING_CAPABLE = Regex("""gemini-(2\.5|3|4)""")
         private val REASONING_OPENAI = Regex("""^(o\d|gpt-5|gpt-4\.1|deepseek-r)""")
 
@@ -207,26 +298,24 @@ class AiTranslationApi(
             if (host.isEmpty()) return false
             if (host == "localhost" || host.endsWith(".localhost") || host.endsWith(".local")) return false
             if (host == "0.0.0.0" || host == "255.255.255.255") return false
-            // IPv4/IPv6 literal → classify directly; named host → accept
             val v4 = Regex("""^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$""").find(host)
             if (v4 != null) {
                 val o = v4.groupValues.drop(1).map { it.toIntOrNull() ?: return false }
                 if (o.any { it !in 0..255 }) return false
                 val (a, b) = o
                 return when {
-                    a == 10 -> false                                   // 10/8
-                    a == 172 && b in 16..31 -> false                   // 172.16/12
-                    a == 192 && b == 168 -> false                      // 192.168/16
-                    a == 100 && b in 64..127 -> false                  // CGNAT 100.64/10
-                    a == 169 && b == 254 -> false                      // link-local
-                    a == 127 -> false                                  // loopback
-                    a == 0 -> false                                    // 0/8
+                    a == 10 -> false
+                    a == 172 && b in 16..31 -> false
+                    a == 192 && b == 168 -> false
+                    a == 100 && b in 64..127 -> false
+                    a == 169 && b == 254 -> false
+                    a == 127 -> false
+                    a == 0 -> false
                     else -> true
                 }
             }
-            if (host.contains(":")) { // IPv6 literal (URL.host keeps brackets off)
-                val addr = runCatching { java.net.InetAddress.getByName(host) }.getOrNull()
-                    ?: return false
+            if (host.contains(":")) {
+                val addr = runCatching { java.net.InetAddress.getByName(host) }.getOrNull() ?: return false
                 return !(addr.isLoopbackAddress || addr.isLinkLocalAddress ||
                     addr.isAnyLocalAddress || addr.isMulticastAddress)
             }
@@ -260,9 +349,7 @@ class AiTranslationApi(
                 }
             }
 
-            // numbering ignored entirely for a single paragraph → take raw content
             if (byIndex.isEmpty() && expected == 1) return listOf(content.trim())
-
             return (1..expected).map { i -> byIndex[i]?.toString()?.trim().orEmpty() }
         }
     }

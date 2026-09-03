@@ -114,6 +114,14 @@ fun ReaderScreen(
     val isPlayingTts by tts.isPlaying.collectAsState()
     val ttsIndex by tts.currentIndex.collectAsState()
     val aiProgress by vm.aiProgress.collectAsState()
+    val aiLive by vm.aiLive.collectAsState()
+
+    // paragraphs rendered while streaming: translated ones replace originals
+    // as they arrive, so the chapter "fills in" without waiting for the end
+    val displayedParagraphs = remember(paragraphs, aiLive) {
+        if (aiLive.isEmpty()) paragraphs
+        else paragraphs.mapIndexed { i, orig -> aiLive[i] ?: orig }
+    }
     DisposableEffect(Unit) {
         onDispose {
             tts.shutdown()
@@ -140,7 +148,7 @@ fun ReaderScreen(
 
     // debounced progress save while reading
     LaunchedEffect(scrollProgress, chapterPath) {
-        if (!loading && paragraphs.size > 1) {
+        if (!loading && displayedParagraphs.size > 1) {
             vm.saveProgress(
                 novelId, chapterPath, chapterName,
                 scroll = scrollProgress,
@@ -242,12 +250,13 @@ fun ReaderScreen(
             paragraphs.size > 1 -> {
                 vm.translate(
                     novelId, chapterPath, paragraphs,
-                    onResult = { result, _ ->
+                    onLiveFinal = { result, _ ->
                         paragraphs = result
                         translated = true
                     },
                     onError = { showAi = true }, // surface the error in the sheet
                 )
+                showAi = false // watch the chapter fill in live
             }
         }
     }
@@ -326,7 +335,7 @@ fun ReaderScreen(
                         enabled = !loading && paragraphs.isNotEmpty(),
                         onClick = {
                             val start = listState.firstVisibleItemIndex.coerceAtLeast(0)
-                            tts.toggle(paragraphs, start)
+                            tts.toggle(displayedParagraphs, start)
                         },
                     ) {
                         Icon(
@@ -401,9 +410,9 @@ fun ReaderScreen(
                             }
                         }
                     }
-                    items(paragraphs.size) { i ->
+                    items(displayedParagraphs.size) { i ->
                         Text(
-                            text = paragraphs[i],
+                            text = displayedParagraphs[i],
                             color = pal.text,
                             fontSize = fontSp.sp,
                             lineHeight = (fontSp * lineMul).sp,
@@ -604,6 +613,8 @@ fun ReaderScreen(
                 progress = aiProgress,
                 translated = translated,
                 palette = pal,
+                liveCount = aiLive.size,
+                totalParagraphs = paragraphs.size,
                 onDismiss = { showAi = false },
                 onTranslate = {
                     if (translated) {
@@ -612,12 +623,13 @@ fun ReaderScreen(
                     } else if (paragraphs.size > 1) {
                         vm.translate(
                             novelId, chapterPath, paragraphs,
-                            onResult = { result, _ ->
+                            onLiveFinal = { result, _ ->
                                 paragraphs = result
                                 translated = true
                             },
-                            onError = { },
+                            onError = { showAi = true },
                         )
+                        showAi = false // watch the chapter fill in live
                     }
                 },
                 onCancel = { vm.cancelTranslate() },
@@ -638,6 +650,8 @@ private fun AiTranslateSheet(
     progress: ReaderViewModel.AiProgress,
     translated: Boolean,
     palette: com.novelreader.ui.ReaderPalette,
+    liveCount: Int,
+    totalParagraphs: Int,
     onDismiss: () -> Unit,
     onTranslate: () -> Unit,
     onCancel: () -> Unit,
@@ -743,11 +757,19 @@ private fun AiTranslateSheet(
 
             if (progress.running) {
                 Text(
-                    "Menerjemahkan seluruh bab…",
+                    if (liveCount > 0) {
+                        "Menerjemahkan… $liveCount/$totalParagraphs paragraf — hasil masuk bertahap di bawah"
+                    } else {
+                        "Menerjemahkan… ($totalParagraphs paragraf)"
+                    },
                     color = palette.muted,
                     style = MaterialTheme.typography.labelMedium,
                 )
                 LinearProgressIndicator(
+                    progress = {
+                        if (totalParagraphs <= 0) 0f
+                        else liveCount.toFloat() / totalParagraphs
+                    },
                     modifier = Modifier.fillMaxWidth(),
                     color = palette.accent,
                     trackColor = palette.muted.copy(alpha = 0.2f),
