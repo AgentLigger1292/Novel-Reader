@@ -43,8 +43,12 @@ interface ChaptersDao {
 
 @Dao
 interface HistoryDao {
-    @Query("SELECT * FROM history ORDER BY updatedAt DESC")
-    fun observeAll(): Flow<List<HistoryEntity>>
+    @Query(
+        "SELECT h.*, n.title AS novelTitle, n.coverUrl AS novelCoverUrl " +
+            "FROM history h LEFT JOIN novels n ON n.novelId = h.novelId " +
+            "ORDER BY h.updatedAt DESC",
+    )
+    fun observeAll(): Flow<List<HistoryWithNovel>>
 
     @Query("SELECT * FROM history WHERE novelId = :novelId")
     suspend fun find(novelId: String): HistoryEntity?
@@ -55,6 +59,19 @@ interface HistoryDao {
     @Query("DELETE FROM history WHERE novelId = :novelId")
     suspend fun delete(novelId: String)
 }
+
+/** Projection row for the history list (LEFT JOIN result; novel may be evicted). */
+data class HistoryWithNovel(
+    val novelId: String,
+    val chapterId: String,
+    val chapterName: String,
+    val scroll: Float,
+    val percent: Float,
+    val chaptersCount: Int,
+    val updatedAt: Long,
+    val novelTitle: String?,
+    val novelCoverUrl: String?,
+)
 
 @Dao
 interface FavouritesDao {

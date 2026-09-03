@@ -7,7 +7,7 @@ import kotlinx.coroutines.flow.Flow
 /** Reading progress persistence — mirrors Kotatsu's HistoryRepository. */
 class HistoryRepository(private val db: NovelDatabase) {
 
-    val history: Flow<List<com.novelreader.core.db.HistoryEntity>> = db.historyDao().observeAll()
+    val history: Flow<List<com.novelreader.core.db.HistoryWithNovel>> = db.historyDao().observeAll()
 
     suspend fun find(novelId: String): com.novelreader.core.db.HistoryEntity? =
         db.historyDao().find(novelId)

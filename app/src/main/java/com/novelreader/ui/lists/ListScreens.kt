@@ -1,6 +1,5 @@
 package com.novelreader.ui.lists
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,11 +14,12 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
@@ -35,10 +35,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.novelreader.core.AppContainer
 import com.novelreader.core.AppVmFactory
 import com.novelreader.ui.NovelGridCard
-import java.text.DateFormat
-import java.util.Date
 
-/** Kotatsu History screen: full list with resume + progress percent. */
+/** Kotatsu History screen: full list with cover, resume + progress percent. */
 @Composable
 fun HistoryScreen(
     container: AppContainer,
@@ -48,7 +46,11 @@ fun HistoryScreen(
     val items by vm.history.collectAsState(initial = emptyList())
     if (items.isEmpty()) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text("Belum ada riwayat baca", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            EmptyState(
+                icon = Icons.Default.History,
+                title = "Belum ada riwayat baca",
+                hint = "Novel yang kamu baca akan muncul di sini.",
+            )
         }
         return
     }
@@ -57,24 +59,9 @@ fun HistoryScreen(
             val sep = e.novelId.indexOf('|')
             val sourceId = if (sep > 0) e.novelId.substring(0, sep) else ""
             val novelPath = if (sep > 0) e.novelId.substring(sep + 1) else ""
-            ListItem(
-                headlineContent = { Text(e.chapterName, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                supportingContent = {
-                    Column {
-                        if (e.percent > 0f) {
-                            LinearProgressIndicator(
-                                progress = { e.percent.coerceIn(0f, 1f) },
-                                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                            )
-                        }
-                        Text(
-                            DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT)
-                                .format(Date(e.updatedAt)),
-                            style = MaterialTheme.typography.labelSmall,
-                        )
-                    }
-                },
-                modifier = Modifier.clickable {
+            HistoryRow(
+                item = e,
+                onClick = {
                     if (sourceId.isNotEmpty()) {
                         onOpenChapter(sourceId, novelPath, e.chapterId, e.chapterName)
                     }
@@ -110,7 +97,11 @@ fun FavouritesScreen(
         }
         if (novels.isEmpty()) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("Favourite kosong", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                EmptyState(
+                    icon = Icons.Default.Favorite,
+                    title = "Favourite kosong",
+                    hint = "Tambahkan novel lewat ikon favourite di halaman detail.",
+                )
             }
         } else {
             LazyVerticalGrid(
@@ -154,10 +145,10 @@ fun FeedScreen(
         }
         if (items.isEmpty()) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text(
-                    "Tidak ada chapter baru.\nFavourite novel untuk mulai dilacak.",
-                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                EmptyState(
+                    icon = Icons.Default.Notifications,
+                    title = "Tidak ada chapter baru",
+                    hint = "Favourite novel untuk mulai dilacak.",
                 )
             }
         } else {
@@ -166,15 +157,9 @@ fun FeedScreen(
                     val sep = t.novelId.indexOf('|')
                     val sourceId = if (sep > 0) t.novelId.substring(0, sep) else ""
                     val novelPath = if (sep > 0) t.novelId.substring(sep + 1) else ""
-                    ListItem(
-                        headlineContent = {
-                            Text(t.title, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                        },
-                        supportingContent = { Text("${t.newChapters} chapter baru") },
-                        leadingContent = {
-                            androidx.compose.material3.Badge { Text("+${t.newChapters}") }
-                        },
-                        modifier = Modifier.clickable {
+                    FeedRow(
+                        item = t,
+                        onClick = {
                             if (sourceId.isNotEmpty()) onOpenNovel(sourceId, novelPath)
                         },
                     )
