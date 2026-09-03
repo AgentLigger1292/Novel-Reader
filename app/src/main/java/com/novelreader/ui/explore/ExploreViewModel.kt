@@ -30,6 +30,8 @@ class ExploreViewModel(private val container: AppContainer) : ViewModel() {
     val state = _state.asStateFlow()
 
     private val queryFlow = MutableStateFlow("")
+    /** Query the currently displayed results were loaded for. */
+    private var loadedQuery = ""
 
     init {
         val startSource = container.selectedSourceId
@@ -39,8 +41,8 @@ class ExploreViewModel(private val container: AppContainer) : ViewModel() {
         viewModelScope.launch {
             @OptIn(FlowPreview::class)
             queryFlow.debounce(400).collect { q ->
-                if (q != _state.value.query) {
-                    _state.value = _state.value.copy(query = q)
+                if (q != loadedQuery) {
+                    loadedQuery = q
                     reload()
                 }
             }
@@ -55,6 +57,10 @@ class ExploreViewModel(private val container: AppContainer) : ViewModel() {
     }
 
     fun onQueryChanged(q: String) {
+        // update the field value immediately: the TextField is controlled by
+        // state.query, so a debounced-only update eats every keystroke but the
+        // last one (field resets to the stale value between key events).
+        _state.value = _state.value.copy(query = q)
         queryFlow.value = q
     }
 

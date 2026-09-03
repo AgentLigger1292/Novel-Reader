@@ -26,22 +26,21 @@ class MistmintHavenParser(context: NovelLoaderContext) : PagedNovelParser(
 ) {
     private val apiBase = "https://api.mistminthaven.com/api"
 
+    // skipPage is an ITEM offset on this API (verified against the live site:
+    // /api/novel?keyword=x&limit=8&skipPage=0), not a page number.
     override suspend fun getListPage(page: Int): List<Novel> {
-        val skip = (page - 1).coerceAtLeast(0)
+        val skip = (page - 1).coerceAtLeast(0) * pageSize
         val json = context.httpGet("$apiBase/novel?limit=$pageSize&skipPage=$skip&category=all")
         return MistmintParse.parseNovelList(json)
     }
 
     override suspend fun getSearchPage(query: String, page: Int): List<Novel> {
-        val skip = (page - 1).coerceAtLeast(0)
+        val skip = (page - 1).coerceAtLeast(0) * pageSize
         val q = java.net.URLEncoder.encode(query, "UTF-8")
-        val json = context.httpGet("$apiBase/novel?limit=$pageSize&skipPage=$skip&category=all&search=$q")
-        val novels = MistmintParse.parseNovelList(json)
-        val lower = query.lowercase()
-        val filtered = novels.filter {
-            it.title.lowercase().contains(lower) || (it.author?.lowercase()?.contains(lower) == true)
-        }
-        return if (filtered.isNotEmpty()) filtered else novels
+        // the live site searches with `keyword=`, not `search=` — an unknown
+        // param is silently ignored and the API returns the popular list.
+        val json = context.httpGet("$apiBase/novel?keyword=$q&limit=$pageSize&skipPage=$skip")
+        return MistmintParse.parseNovelList(json)
     }
 
     override suspend fun getDetails(path: String): NovelDetail {
