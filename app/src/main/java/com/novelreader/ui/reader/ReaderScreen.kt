@@ -1,6 +1,10 @@
 package com.novelreader.ui.reader
 
+import android.app.Activity
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.scrollBy
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,6 +22,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.VolumeOff
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
+import androidx.compose.material.icons.filled.Fullscreen
+import androidx.compose.material.icons.filled.FullscreenExit
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Translate
 import androidx.compose.material.icons.filled.Tune
@@ -54,6 +63,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.novelreader.core.AppContainer
 import com.novelreader.core.AppVmFactory
@@ -68,6 +80,8 @@ import com.novelreader.ui.ReaderTts
 import com.novelreader.ui.htmlToParagraphs
 import com.novelreader.ui.palette
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
 
 /**
@@ -98,6 +112,9 @@ fun ReaderScreen(
     var alignJustify by remember { mutableStateOf(settings.readerJustify) }
     var showSettings by remember { mutableStateOf(false) }
     var showAi by remember { mutableStateOf(false) }
+    var isFullscreen by remember { mutableStateOf(false) }
+    var isAutoScrolling by remember { mutableStateOf(false) }
+    var autoScrollSpeed by remember { mutableFloatStateOf(1.0f) }
     var error by remember { mutableStateOf<String?>(null) }
     var loading by remember { mutableStateOf(true) }
     var pendingResumeScroll by remember { mutableStateOf<Float?>(null) }
@@ -109,6 +126,39 @@ fun ReaderScreen(
     val listState = rememberLazyListState()
     val pal = palette(bgMode)
     val context = LocalContext.current
+    val activity = context as? Activity
+
+    // Immersive mode controller
+    DisposableEffect(isFullscreen, activity) {
+        val window = activity?.window
+        if (window != null) {
+            val controller = WindowCompat.getInsetsController(window, window.decorView)
+            controller.systemBarsBehavior =
+                WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            if (isFullscreen) {
+                controller.hide(WindowInsetsCompat.Type.systemBars())
+            } else {
+                controller.show(WindowInsetsCompat.Type.systemBars())
+            }
+        }
+        onDispose {
+            activity?.window?.let { win ->
+                WindowCompat.getInsetsController(win, win.decorView)
+                    .show(WindowInsetsCompat.Type.systemBars())
+            }
+        }
+    }
+
+    // Auto-scroll loop
+    LaunchedEffect(isAutoScrolling, autoScrollSpeed) {
+        if (isAutoScrolling) {
+            while (isActive && isAutoScrolling) {
+                val delayMs = (60f / autoScrollSpeed).toLong().coerceAtLeast(16L)
+                delay(delayMs)
+                listState.scrollBy(2f * autoScrollSpeed)
+            }
+        }
+    }
 
     val tts = remember { ReaderTts(context) }
     val isPlayingTts by tts.isPlaying.collectAsState()
@@ -336,6 +386,25 @@ fun ReaderScreen(
                 actions = {
                     IconButton(
                         enabled = !loading && paragraphs.isNotEmpty(),
+                        onClick = { isAutoScrolling = !isAutoScrolling },
+                    ) {
+                        Icon(
+                            if (isAutoScrolling) Icons.Default.Pause else Icons.Default.PlayArrow,
+                            if (isAutoScrolling) "Jeda Scroll" else "Auto Scroll",
+                            tint = if (isAutoScrolling) pal.accent else pal.text,
+                        )
+                    }
+                    IconButton(
+                        onClick = { isFullscreen = !isFullscreen },
+                    ) {
+                        Icon(
+                            if (isFullscreen) Icons.Default.FullscreenExit else Icons.Default.Fullscreen,
+                            if (isFullscreen) "Keluar Fullscreen" else "Layar Penuh",
+                            tint = if (isFullscreen) pal.accent else pal.text,
+                        )
+                    }
+                    IconButton(
+                        enabled = !loading && paragraphs.isNotEmpty(),
                         onClick = {
                             val start = listState.firstVisibleItemIndex.coerceAtLeast(0)
                             tts.toggle(displayedParagraphs, start)
@@ -413,7 +482,10 @@ fun ReaderScreen(
                             }
                         }
                     }
-                    items(displayedParagraphs.size) { i ->
+                    items(
+                        count = displayedParagraphs.size,
+                        key = { i -> i }
+                    ) { i ->
                         Text(
                             text = displayedParagraphs[i],
                             color = pal.text,
@@ -601,6 +673,22 @@ fun ReaderScreen(
                         onValueChange = { lineMul = it },
                         valueRange = 1.4f..2.2f,
                         steps = 7,
+                        colors = SliderDefaults.colors(
+                            thumbColor = pal.accent,
+                            activeTrackColor = pal.accent,
+                            inactiveTrackColor = pal.muted.copy(alpha = 0.3f),
+                        ),
+                    )
+                    Text(
+                        "Kecepatan Auto-Scroll  ${String.format(java.util.Locale.US, "%.1fx", autoScrollSpeed)}",
+                        color = pal.muted,
+                        style = MaterialTheme.typography.labelLarge,
+                    )
+                    Slider(
+                        value = autoScrollSpeed,
+                        onValueChange = { autoScrollSpeed = it },
+                        valueRange = 0.5f..3.0f,
+                        steps = 4,
                         colors = SliderDefaults.colors(
                             thumbColor = pal.accent,
                             activeTrackColor = pal.accent,

@@ -275,7 +275,7 @@ class DownloadStore(context: Context) {
     }
 
     private fun sha1(s: String): String {
-        val d = MessageDigest.getInstance("SHA-1").digest(s.toByteArray())
+        val d = MessageDigest.getInstance("SHA-256").digest(s.toByteArray())
         return d.joinToString("") { "%02x".format(it) }
     }
 
