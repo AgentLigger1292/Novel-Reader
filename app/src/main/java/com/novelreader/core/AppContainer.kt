@@ -14,6 +14,7 @@ import com.novelreader.source.DummySource
 import com.novelreader.source.MistmintHavenParser
 import com.novelreader.source.NovelSource
 import com.novelreader.source.SakuraNovelParser
+import com.novelreader.source.LocalEpubSource
 import com.novelreader.source.SonicMtlParser
 import com.novelreader.translate.AiTranslationRepository
 
@@ -44,6 +45,9 @@ class AppContainer(context: Context) {
         put(mistmint.id, mistmint)
         val sonic = SonicMtlParser(loaderContext)
         put(sonic.id, sonic)
+        // local EPUB import — offline, must stay out of Explore/seed (see SourcesRepository)
+        val local = LocalEpubSource(db)
+        put(local.id, local)
     }
 
     val sourcesRepository = SourcesRepository(sourceMap, db)
@@ -51,6 +55,9 @@ class AppContainer(context: Context) {
     val favouritesRepository = FavouritesRepository(db)
     val trackerRepository = TrackerRepository(db)
     val aiTranslation = AiTranslationRepository(db.translationsDao())
+
+    /** Imported EPUB files (offline source "local_epub"). */
+    val localEpubRepository = LocalEpubRepository(db, appContext)
 
     /** Offline storage — folder format unchanged. */
     val downloads = DownloadStore(appContext)

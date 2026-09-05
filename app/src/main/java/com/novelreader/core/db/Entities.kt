@@ -96,3 +96,15 @@ data class TranslationEntity(
     val translatedHtml: String,
     val createdAt: Long,
 )
+
+/**
+ * Imported EPUB file mapping: `epubId` → on-disk file path (+ extracted cover).
+ * Chapter bodies are read lazily from the zip via [LocalEpubSource]; only the
+ * manifest/spine metadata is stored here.
+ */
+@Entity(tableName = "local_epubs")
+data class LocalEpubEntity(
+    @PrimaryKey val epubId: String,
+    val filePath: String,
+    val coverPath: String?,
+)

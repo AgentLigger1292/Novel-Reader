@@ -12,7 +12,10 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material3.Button
@@ -29,14 +32,18 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.novelreader.core.AppVmFactory
 import com.novelreader.core.AppContainer
 import com.novelreader.ui.NovelGridCard
+import kotlinx.coroutines.launch
+import android.widget.Toast
 
 /**
  * Kotatsu Explore screen: source tile grid + paged popular/search grid with
@@ -53,9 +60,23 @@ fun ExploreScreen(
     var coverTick by remember { mutableIntStateOf(0) }
     val gridState = rememberLazyGridState()
     val source = container.source(state.sourceId)
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val importLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            container.localEpubRepository.import(uri)
+                .onSuccess { Toast.makeText(context, "EPUB diimpor", Toast.LENGTH_SHORT).show() }
+                .onFailure { e ->
+                    Toast.makeText(context, "Gagal impor: ${e.message}", Toast.LENGTH_LONG).show()
+                }
+        }
+    }
     val sourceItems = remember {
         container.sourcesRepository.all
-            .filter { it.id != "dummy" }
+            .filter { it.id != "dummy" && it.id != "local_epub" }
             .map { SourceUiItem(it.id, it.name, it.siteUrl) }
     }
 
@@ -85,6 +106,10 @@ fun ExploreScreen(
         ) {
             Text("Sumber novel", style = MaterialTheme.typography.titleLarge)
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                Button(onClick = { importLauncher.launch(arrayOf("application/epub+zip", "application/zip")) }) {
+                    Icon(Icons.Default.Add, contentDescription = null)
+                    Text("Impor EPUB")
+                }
                 if (source.siteUrl != null) {
                     IconButton(onClick = { onOpenCf(source.siteUrl!!) }) {
                         Icon(Icons.Default.Security, contentDescription = "Buka CF")

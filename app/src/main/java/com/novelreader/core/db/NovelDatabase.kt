@@ -17,8 +17,9 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         SourceEntity::class,
         TrackEntity::class,
         TranslationEntity::class,
+        LocalEpubEntity::class,
     ],
-    version = 2,
+    version = 3,
     exportSchema = false,
 )
 abstract class NovelDatabase : RoomDatabase() {
@@ -29,6 +30,7 @@ abstract class NovelDatabase : RoomDatabase() {
     abstract fun sourcesDao(): SourcesDao
     abstract fun tracksDao(): TracksDao
     abstract fun translationsDao(): TranslationsDao
+    abstract fun localEpubDao(): LocalEpubDao
 
     companion object {
         /** v2: AI translation cache — additive table, no existing data touched. */
@@ -48,9 +50,21 @@ abstract class NovelDatabase : RoomDatabase() {
             }
         }
 
+        /** v3: local EPUB import — additive `local_epubs` table. */
+        private val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `local_epubs` (" +
+                        "`epubId` TEXT NOT NULL PRIMARY KEY, " +
+                        "`filePath` TEXT NOT NULL, " +
+                        "`coverPath` TEXT)",
+                )
+            }
+        }
+
         fun create(context: Context): NovelDatabase =
             Room.databaseBuilder(context, NovelDatabase::class.java, "novelreader.db")
-                .addMigrations(MIGRATION_1_2)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                 .fallbackToDestructiveMigration()
                 .build()
     }

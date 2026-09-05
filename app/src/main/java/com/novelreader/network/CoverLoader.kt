@@ -82,11 +82,20 @@ object CoverLoader {
     }
 
     fun request(context: Context, url: String?): Any? {
+        // Local files (imported EPUB covers) are served directly as a File model.
+        if (url != null && isLocalFile(url)) {
+            val f = File(url)
+            if (f.exists() && f.length() > 0) return f
+            return null
+        }
         val u = normalize(url) ?: return null
         validCache(context, u)?.let { return it }
         enqueue(context, u, null)
         return null
     }
+
+    private fun isLocalFile(url: String): Boolean =
+        url.startsWith("/") || url.startsWith("file://") || url.startsWith("content://")
 
     fun normalize(url: String?): String? {
         var u = url?.trim()?.takeIf { it.isNotEmpty() } ?: return null

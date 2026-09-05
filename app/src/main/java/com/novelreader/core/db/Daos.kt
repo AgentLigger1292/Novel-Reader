@@ -174,3 +174,30 @@ interface TranslationsDao {
     )
     suspend fun deleteChapter(novelId: String, chapterId: String)
 }
+
+@Dao
+interface LocalEpubDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(entity: LocalEpubEntity)
+
+    @Query("SELECT * FROM local_epubs WHERE epubId = :epubId")
+    suspend fun find(epubId: String): LocalEpubEntity?
+
+    @Query("DELETE FROM local_epubs WHERE epubId = :epubId")
+    suspend fun delete(epubId: String)
+
+    /** JOIN with novels so the Feed can render a grid card like other sources. */
+    @Query(
+        "SELECT e.epubId AS epubId, n.title AS title, n.coverUrl AS coverUrl " +
+            "FROM local_epubs e INNER JOIN novels n ON n.novelId = ('local_epub|' || e.epubId) " +
+            "ORDER BY e.epubId DESC",
+    )
+    fun observeAll(): Flow<List<LocalEpubWithNovel>>
+}
+
+/** Projection row for the Feed "Koleksi Lokal" section. */
+data class LocalEpubWithNovel(
+    val epubId: String,
+    val title: String,
+    val coverUrl: String?,
+)

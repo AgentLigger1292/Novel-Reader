@@ -114,7 +114,7 @@ fun DetailsScreen(
                     }
                 }
                 IconButton(
-                    enabled = !downloading && state.detail != null,
+                    enabled = !downloading && state.detail != null && source.siteUrl != null,
                     onClick = {
                         val request = androidx.work.OneTimeWorkRequestBuilder<DownloadWorker>()
                             .setInputData(

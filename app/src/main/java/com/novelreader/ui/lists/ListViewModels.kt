@@ -5,6 +5,7 @@ import com.novelreader.core.AppContainer
 import com.novelreader.core.db.FavouriteCategoryEntity
 import com.novelreader.core.db.FavouriteWithNovel
 import com.novelreader.core.db.HistoryWithNovel
+import com.novelreader.core.db.LocalEpubWithNovel
 import com.novelreader.core.db.TrackWithNovel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -40,4 +41,5 @@ class FavouritesViewModel(private val container: AppContainer) : ViewModel() {
 
 class FeedViewModel(private val container: AppContainer) : ViewModel() {
     val feed: Flow<List<TrackWithNovel>> = container.trackerRepository.feed
+    val localEpubs: Flow<List<LocalEpubWithNovel>> = container.localEpubRepository.observeAll()
 }

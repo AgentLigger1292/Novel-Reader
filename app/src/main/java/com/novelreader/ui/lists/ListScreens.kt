@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -132,38 +133,75 @@ fun FeedScreen(
     vm: FeedViewModel = viewModel(factory = AppVmFactory(container)),
 ) {
     val items by vm.feed.collectAsState(initial = emptyList())
-    Column(Modifier.fillMaxSize()) {
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text("Update terbaru", style = MaterialTheme.typography.titleMedium)
-            IconButton(onClick = onCheckNow) {
-                Icon(Icons.Default.Refresh, "Periksa sekarang")
+    val local by vm.localEpubs.collectAsState(initial = emptyList())
+    LazyColumn(Modifier.fillMaxSize()) {
+        if (local.isNotEmpty()) {
+            items(count = 1, key = { "local_header" }) {
+                Text(
+                    "Koleksi Lokal",
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.padding(start = 16.dp, top = 12.dp, bottom = 4.dp),
+                )
+            }
+            items(count = 1, key = { "local_grid" }) {
+                val rows = (local.size + 2) / 3
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(3),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp)
+                        .height((rows * 200 + (rows - 1) * 12).dp),
+                    contentPadding = PaddingValues(0.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    userScrollEnabled = false,
+                ) {
+                    gridItems(local, key = { it.epubId }) { e ->
+                        NovelGridCard(
+                            title = e.title,
+                            coverUrl = e.coverUrl,
+                            onClick = { onOpenNovel("local_epub", e.epubId) },
+                        )
+                    }
+                }
+            }
+        }
+        items(count = 1, key = { "feed_header" }) {
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("Update terbaru", style = MaterialTheme.typography.titleMedium)
+                IconButton(onClick = onCheckNow) {
+                    Icon(Icons.Default.Refresh, "Periksa sekarang")
+                }
             }
         }
         if (items.isEmpty()) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                EmptyState(
-                    icon = Icons.Default.Notifications,
-                    title = "Tidak ada chapter baru",
-                    hint = "Favourite novel untuk mulai dilacak.",
-                )
-            }
-        } else {
-            LazyColumn(Modifier.fillMaxSize()) {
-                items(items, key = { it.novelId }) { t ->
-                    val sep = t.novelId.indexOf('|')
-                    val sourceId = if (sep > 0) t.novelId.substring(0, sep) else ""
-                    val novelPath = if (sep > 0) t.novelId.substring(sep + 1) else ""
-                    FeedRow(
-                        item = t,
-                        onClick = {
-                            if (sourceId.isNotEmpty()) onOpenNovel(sourceId, novelPath)
-                        },
+            items(count = 1, key = { "feed_empty" }) {
+                Box(
+                    Modifier.fillMaxWidth().padding(top = 80.dp, bottom = 80.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    EmptyState(
+                        icon = Icons.Default.Notifications,
+                        title = "Tidak ada chapter baru",
+                        hint = "Favourite novel untuk mulai dilacak.",
                     )
                 }
+            }
+        } else {
+            items(items, key = { it.novelId }) { t ->
+                val sep = t.novelId.indexOf('|')
+                val sourceId = if (sep > 0) t.novelId.substring(0, sep) else ""
+                val novelPath = if (sep > 0) t.novelId.substring(sep + 1) else ""
+                FeedRow(
+                    item = t,
+                    onClick = {
+                        if (sourceId.isNotEmpty()) onOpenNovel(sourceId, novelPath)
+                    },
+                )
             }
         }
     }

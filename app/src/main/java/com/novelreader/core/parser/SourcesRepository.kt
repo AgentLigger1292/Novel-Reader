@@ -32,7 +32,7 @@ class SourcesRepository(
     suspend fun seedSources(selectedId: String) {
         val existing = db.sourcesDao().all()
         if (existing.isEmpty()) {
-            val enabled = sources.keys.filter { it != "dummy" }
+            val enabled = sources.keys.filter { it != "dummy" && it != "local_epub" }
             db.sourcesDao().upsertAll(
                 enabled.mapIndexed { i, id ->
                     SourceEntity(sourceId = id, enabled = true, sortKey = i)
@@ -41,7 +41,7 @@ class SourcesRepository(
             return
         }
         // app updates can ship new parsers — append sources missing from the DB
-        val added = sources.keys.filter { it != "dummy" && existing.none { e -> e.sourceId == it } }
+        val added = sources.keys.filter { it != "dummy" && it != "local_epub" && existing.none { e -> e.sourceId == it } }
         if (added.isNotEmpty()) {
             db.sourcesDao().upsertAll(
                 added.mapIndexed { i, id ->
