@@ -90,6 +90,9 @@ interface FavouritesDao {
     @Query("SELECT f.*, n.title, n.sourceId, n.path, n.coverUrl, n.author FROM favourites f INNER JOIN novels n ON n.novelId = f.novelId ORDER BY f.createdAt DESC")
     suspend fun allFavourites(): List<FavouriteWithNovel>
 
+    @Query("SELECT f.*, n.title, n.sourceId, n.path, n.coverUrl, n.author FROM favourites f INNER JOIN novels n ON n.novelId = f.novelId ORDER BY f.createdAt DESC")
+    fun observeAllFavourites(): Flow<List<FavouriteWithNovel>>
+
     @Query("SELECT EXISTS(SELECT 1 FROM favourites WHERE novelId = :novelId)")
     fun observeIsFavourite(novelId: String): Flow<Boolean>
 

@@ -42,7 +42,6 @@ class DetailsViewModel(private val container: AppContainer) : ViewModel() {
                         ChapterEntity(novelId, ch.path, ch.name, ch.number, i)
                     }
                 val history = container.historyRepository.find(novelId)
-                container.trackerRepository.clearNewChapters(novelId)
                 _state.value = UiState(
                     loading = false,
                     detail = detail,

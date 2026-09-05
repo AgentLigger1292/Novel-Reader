@@ -31,6 +31,10 @@ class FavouritesRepository(private val db: NovelDatabase) {
     suspend fun defaultCategoryId(): Long =
         db.favouritesDao().firstCategory()?.categoryId ?: 1L
 
+    /** All favourites across categories. */
+    val allFavouritesFlow: Flow<List<FavouriteWithNovel>> =
+        db.favouritesDao().observeAllFavourites()
+
     /** All favourites across categories — used by the tracker worker. */
     suspend fun allFavourites(): List<FavouriteWithNovel> = db.favouritesDao().allFavourites()
 }

@@ -42,15 +42,6 @@ class AppSettings(context: Context) {
         get() = prefs.getString(KEY_SOURCE, null) ?: "bacalightnovel"
         set(value) = prefs.edit().putString(KEY_SOURCE, value).apply()
 
-    // ---- tracker ----
-    var trackerEnabled: Boolean
-        get() = prefs.getBoolean(KEY_TRACKER_ENABLED, true)
-        set(value) = prefs.edit().putBoolean(KEY_TRACKER_ENABLED, value).apply()
-
-    var trackerIntervalHours: Int
-        get() = prefs.getInt(KEY_TRACKER_INTERVAL, 6).coerceIn(1, 24)
-        set(value) = prefs.edit().putInt(KEY_TRACKER_INTERVAL, value.coerceIn(1, 24)).apply()
-
     // ---- AI translation ----
     /** "gemini" (Google AI) or "openai" (any OpenAI-compatible endpoint). */
     var aiProvider: String
@@ -75,6 +66,17 @@ class AppSettings(context: Context) {
         get() = prefs.getString(KEY_AI_LANG, null) ?: "Indonesian"
         set(value) = prefs.edit().putString(KEY_AI_LANG, value.trim()).apply()
 
+    // ---- app update check ----
+    /** Epoch millis of the last GitHub update check (throttle). */
+    var lastUpdateCheck: Long
+        get() = prefs.getLong(KEY_UPDATE_CHECK, 0L)
+        set(value) = prefs.edit().putLong(KEY_UPDATE_CHECK, value).apply()
+
+    /** Version the user dismissed so the banner stops nagging until a newer one appears. */
+    var dismissedUpdateVersion: String
+        get() = prefs.getString(KEY_UPDATE_DISMISS, null).orEmpty()
+        set(value) = prefs.edit().putString(KEY_UPDATE_DISMISS, value).apply()
+
     companion object {
         private const val KEY_FONT_SP = "reader.font_sp"
         private const val KEY_LINE_MUL = "reader.line_mul"
@@ -82,12 +84,12 @@ class AppSettings(context: Context) {
         private const val KEY_FONT_TYPE = "reader.font_type"
         private const val KEY_JUSTIFY = "reader.justify"
         private const val KEY_SOURCE = "sources.selected"
-        private const val KEY_TRACKER_ENABLED = "tracker.enabled"
-        private const val KEY_TRACKER_INTERVAL = "tracker.interval_hours"
         private const val KEY_AI_PROVIDER = "ai.provider"
         private const val KEY_AI_BASE_URL = "ai.base_url"
         private const val KEY_AI_KEY = "ai.key"
         private const val KEY_AI_MODEL = "ai.model"
         private const val KEY_AI_LANG = "ai.target_lang"
+        private const val KEY_UPDATE_CHECK = "update.last_check"
+        private const val KEY_UPDATE_DISMISS = "update.dismissed_version"
     }
 }

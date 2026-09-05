@@ -14,7 +14,6 @@ class AppWorkerFactory(private val container: AppContainer) : WorkerFactory() {
         workerParameters: WorkerParameters,
     ): ListenableWorker? = when (workerClassName) {
         DownloadWorker::class.java.name -> DownloadWorker(appContext, workerParameters, container)
-        TrackWorker::class.java.name -> TrackWorker(appContext, workerParameters, container)
         else -> null // fall back to default instantiation
     }
 }

@@ -17,24 +17,25 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.History
-import androidx.compose.material.icons.filled.Notifications
-import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import android.content.Intent
+import android.net.Uri
 import com.novelreader.core.AppContainer
 import com.novelreader.core.AppVmFactory
+import com.novelreader.core.update.AppUpdate
 import com.novelreader.ui.NovelGridCard
 
 /** Kotatsu History screen: full list with cover, resume + progress percent. */
@@ -72,69 +73,36 @@ fun HistoryScreen(
     }
 }
 
-/** Kotatsu Favourites: category tabs + novel grid. */
-@Composable
-fun FavouritesScreen(
-    container: AppContainer,
-    onOpenNovel: (String, String) -> Unit,
-    vm: FavouritesViewModel = viewModel(factory = AppVmFactory(container)),
-) {
-    val categories by vm.categories.collectAsState(initial = emptyList())
-    val selected by vm.selectedCategory.collectAsState()
-    val novels by vm.novels.collectAsState(initial = emptyList())
-
-    Column(Modifier.fillMaxSize()) {
-        if (categories.isNotEmpty()) {
-            TabRow(selectedTabIndex = categories.indexOfFirst { it.categoryId == selected }
-                .coerceAtLeast(0)) {
-                categories.forEach { cat ->
-                    Tab(
-                        selected = cat.categoryId == selected,
-                        onClick = { vm.selectCategory(cat.categoryId) },
-                        text = { Text(cat.title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                    )
-                }
-            }
-        }
-        if (novels.isEmpty()) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                EmptyState(
-                    icon = Icons.Default.Favorite,
-                    title = "Favourite kosong",
-                    hint = "Tambahkan novel lewat ikon favourite di halaman detail.",
-                )
-            }
-        } else {
-            LazyVerticalGrid(
-                columns = GridCells.Fixed(3),
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(12.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                gridItems(novels, key = { it.novelId }) { f ->
-                    NovelGridCard(
-                        title = f.title,
-                        coverUrl = f.coverUrl,
-                        onClick = { onOpenNovel(f.sourceId, f.path) },
-                    )
-                }
-            }
-        }
-    }
-}
-
-/** Kotatsu Feed: favourites with new chapters detected by TrackWorker. */
+/**
+ * Library: the user's collection — favourites plus imported local EPUBs.
+ * A GitHub app-update banner may appear at the top when a newer release exists.
+ */
 @Composable
 fun FeedScreen(
     container: AppContainer,
     onOpenNovel: (String, String) -> Unit,
-    onCheckNow: () -> Unit,
     vm: FeedViewModel = viewModel(factory = AppVmFactory(container)),
 ) {
-    val items by vm.feed.collectAsState(initial = emptyList())
+    val favourites by vm.favourites.collectAsState(initial = emptyList())
     val local by vm.localEpubs.collectAsState(initial = emptyList())
+    val update by vm.appUpdate.collectAsState()
+    val context = LocalContext.current
     LazyColumn(Modifier.fillMaxSize()) {
+        if (update != null) {
+            item(key = "update_banner") {
+                UpdateBanner(
+                    update = update!!,
+                    onUpdate = {
+                        runCatching {
+                            context.startActivity(
+                                Intent(Intent.ACTION_VIEW, Uri.parse(update!!.releaseUrl)),
+                            )
+                        }
+                    },
+                    onDismiss = { vm.dismissUpdate(update!!.versionName) },
+                )
+            }
+        }
         if (local.isNotEmpty()) {
             items(count = 1, key = { "local_header" }) {
                 Text(
@@ -166,42 +134,88 @@ fun FeedScreen(
                 }
             }
         }
-        items(count = 1, key = { "feed_header" }) {
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text("Update terbaru", style = MaterialTheme.typography.titleMedium)
-                IconButton(onClick = onCheckNow) {
-                    Icon(Icons.Default.Refresh, "Periksa sekarang")
-                }
-            }
+        items(count = 1, key = { "fav_header" }) {
+            Text(
+                "Koleksi",
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.padding(start = 16.dp, top = 12.dp, bottom = 4.dp),
+            )
         }
-        if (items.isEmpty()) {
-            items(count = 1, key = { "feed_empty" }) {
+        if (favourites.isEmpty()) {
+            items(count = 1, key = { "fav_empty" }) {
                 Box(
                     Modifier.fillMaxWidth().padding(top = 80.dp, bottom = 80.dp),
                     contentAlignment = Alignment.Center,
                 ) {
                     EmptyState(
-                        icon = Icons.Default.Notifications,
-                        title = "Tidak ada chapter baru",
-                        hint = "Favourite novel untuk mulai dilacak.",
+                        icon = Icons.Default.Favorite,
+                        title = "Koleksi kosong",
+                        hint = "Tambahkan novel lewat ikon favourite di halaman detail.",
                     )
                 }
             }
         } else {
-            items(items, key = { it.novelId }) { t ->
-                val sep = t.novelId.indexOf('|')
-                val sourceId = if (sep > 0) t.novelId.substring(0, sep) else ""
-                val novelPath = if (sep > 0) t.novelId.substring(sep + 1) else ""
-                FeedRow(
-                    item = t,
-                    onClick = {
-                        if (sourceId.isNotEmpty()) onOpenNovel(sourceId, novelPath)
-                    },
+            items(count = 1, key = { "fav_grid" }) {
+                val rows = (favourites.size + 2) / 3
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(3),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp)
+                        .height((rows * 200 + (rows - 1) * 12).dp),
+                    contentPadding = PaddingValues(0.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    userScrollEnabled = false,
+                ) {
+                    gridItems(favourites, key = { it.novelId }) { f ->
+                        NovelGridCard(
+                            title = f.title,
+                            coverUrl = f.coverUrl,
+                            onClick = { onOpenNovel(f.sourceId, f.path) },
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** Banner shown at the top of the Library when a newer app version is published on GitHub. */
+@Composable
+private fun UpdateBanner(
+    update: AppUpdate,
+    onUpdate: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    Card(
+        Modifier
+            .fillMaxWidth()
+            .padding(start = 12.dp, end = 12.dp, top = 10.dp, bottom = 4.dp),
+        shape = MaterialTheme.shapes.medium,
+    ) {
+        Column(Modifier.padding(14.dp)) {
+            Text(
+                "Pembaruan tersedia: v${update.versionName}",
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.primary,
+            )
+            if (!update.notes.isNullOrBlank()) {
+                Text(
+                    update.notes.lines().first().take(120),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(top = 4.dp),
                 )
+            }
+            Row(
+                Modifier.fillMaxWidth().padding(top = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+            ) {
+                TextButton(onClick = onDismiss) { Text("Nanti") }
+                Button(onClick = onUpdate) { Text("Perbarui") }
             }
         }
     }

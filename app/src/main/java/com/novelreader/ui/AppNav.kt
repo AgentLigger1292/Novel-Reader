@@ -4,7 +4,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.Explore
-import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
@@ -25,7 +24,6 @@ import com.novelreader.ui.details.DetailsScreen
 import com.novelreader.ui.explore.ExploreScreen
 import com.novelreader.ui.lists.DownloadsScreen
 import com.novelreader.ui.lists.FeedScreen
-import com.novelreader.ui.lists.FavouritesScreen
 import com.novelreader.ui.lists.HistoryScreen
 import com.novelreader.ui.reader.ReaderScreen
 import java.net.URLDecoder
@@ -43,9 +41,8 @@ private data class NavItem(
 )
 
 private val NAV_ITEMS = listOf(
-    NavItem("feed", "Feed", Icons.AutoMirrored.Filled.MenuBook),
+    NavItem("feed", "Library", Icons.AutoMirrored.Filled.MenuBook),
     NavItem("history", "History", Icons.Default.History),
-    NavItem("favourites", "Favourite", Icons.Default.Favorite),
     NavItem("explore", "Explore", Icons.Default.Explore),
 )
 
@@ -85,7 +82,6 @@ fun AppNav(app: NovelApp) {
                     onOpenNovel = { sourceId, path ->
                         nav.navigate("novel/${enc(sourceId)}/${enc(path)}")
                     },
-                    onCheckNow = { app.runTrackerNow() },
                 )
             }
             composable("history") {
@@ -95,14 +91,6 @@ fun AppNav(app: NovelApp) {
                         nav.navigate(
                             "reader/${enc(sourceId)}/${enc(novelPath)}/${enc(chapterPath)}/${enc(novelTitle)}",
                         )
-                    },
-                )
-            }
-            composable("favourites") {
-                FavouritesScreen(
-                    container = container,
-                    onOpenNovel = { sourceId, path ->
-                        nav.navigate("novel/${enc(sourceId)}/${enc(path)}")
                     },
                 )
             }
