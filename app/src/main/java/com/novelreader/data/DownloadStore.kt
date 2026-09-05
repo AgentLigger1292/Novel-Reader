@@ -222,7 +222,7 @@ class DownloadStore(context: Context) {
 
     private fun novelDir(sourceId: String, novelPath: String): File {
         val key = libraryKey(sourceId, novelPath)
-        val safe = sha1(key)
+        val safe = sha256(key)
         return File(root, safe)
     }
 
@@ -230,7 +230,7 @@ class DownloadStore(context: Context) {
         File(novelDir(sourceId, novelPath), "meta.json")
 
     private fun chapterFile(sourceId: String, novelPath: String, chapterPath: String): File {
-        val name = sha1(chapterPath) + ".html"
+        val name = sha256(chapterPath) + ".html"
         return File(File(novelDir(sourceId, novelPath), "chapters"), name)
     }
 
@@ -274,7 +274,7 @@ class DownloadStore(context: Context) {
         atomicWriteText(indexFile, arr.toString())
     }
 
-    private fun sha1(s: String): String {
+    private fun sha256(s: String): String {
         val d = MessageDigest.getInstance("SHA-256").digest(s.toByteArray())
         return d.joinToString("") { "%02x".format(it) }
     }

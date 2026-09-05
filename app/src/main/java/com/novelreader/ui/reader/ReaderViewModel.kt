@@ -21,6 +21,16 @@ import kotlinx.coroutines.withContext
 class ReaderViewModel(private val container: AppContainer) : ViewModel() {
 
     private var saveJob: Job? = null
+    private var pendingSave: SaveArgs? = null
+
+    private data class SaveArgs(
+        val novelId: String,
+        val chapterId: String,
+        val chapterName: String,
+        val scroll: Float,
+        val percent: Float,
+        val chaptersCount: Int,
+    )
 
     // ---- AI translation ----
 
@@ -118,12 +128,22 @@ class ReaderViewModel(private val container: AppContainer) : ViewModel() {
         percent: Float,
         chaptersCount: Int,
     ) {
-        saveJob?.cancel()
-        saveJob = viewModelScope.launch {
-            delay(600) // debounce scroll storms
-            container.historyRepository.addOrUpdate(
-                novelId, chapterId, chapterName, scroll, percent, chaptersCount,
-            )
+        pendingSave = SaveArgs(novelId, chapterId, chapterName, scroll, percent, chaptersCount)
+        if (saveJob?.isActive != true) {
+            saveJob = viewModelScope.launch {
+                // single long-lived debounce loop: waits 600ms after the LAST
+                // scroll update instead of spawning a coroutine per frame
+                while (true) {
+                    delay(600)
+                    val args = pendingSave ?: break
+                    pendingSave = null
+                    container.historyRepository.addOrUpdate(
+                        args.novelId, args.chapterId, args.chapterName,
+                        args.scroll, args.percent, args.chaptersCount,
+                    )
+                    if (pendingSave == null) break
+                }
+            }
         }
     }
 
@@ -140,6 +160,7 @@ class ReaderViewModel(private val container: AppContainer) : ViewModel() {
         chaptersCount: Int,
     ) {
         saveJob?.cancel()
+        pendingSave = null
         viewModelScope.launch {
             withContext(kotlinx.coroutines.NonCancellable) {
                 container.historyRepository.addOrUpdate(

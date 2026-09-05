@@ -83,6 +83,12 @@ object SessionWebView {
     }
 
     private fun getHtmlLocked(url: String, timeoutSec: Long): String {
+        // This blocks the calling thread while the WebView runs on the main
+        // thread; calling it from the main thread would deadlock the UI. Callers
+        // (parsers / HttpClient) always run on Dispatchers.IO — fail fast otherwise.
+        check(Looper.myLooper() != Looper.getMainLooper()) {
+            "SessionWebView.getHtml must not be called from the main thread"
+        }
         // fail fast when offline — a hung WebView load used to block the full
         // timeout (55s spinner) and trip Samsung ANR detection (QA P1)
         val ctx = appContext
@@ -221,10 +227,5 @@ object SessionWebView {
         return b.contains("challenge-platform") && html.length < 35000
     }
 
-    private fun siteOf(url: String) = try {
-        val u = java.net.URI(url)
-        "${u.scheme}://${u.host}"
-    } catch (_: Exception) {
-        url
-    }
+    private fun siteOf(url: String) = UrlUtils.originOf(url)
 }

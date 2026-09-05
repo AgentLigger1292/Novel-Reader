@@ -115,7 +115,7 @@ object CoverLoader {
 
     fun cacheFile(context: Context, url: String): File {
         val dir = File(context.cacheDir, "covers").also { it.mkdirs() }
-        return File(dir, sha1(url) + extOf(url))
+        return File(dir, sha256(url) + extOf(url))
     }
 
     private fun validCache(context: Context, url: String): File? {
@@ -399,7 +399,7 @@ object CoverLoader {
         return bytes.size > 800 // accept bitmap-captured screenshots
     }
 
-    private fun sha1(s: String): String {
+    private fun sha256(s: String): String {
         val d = MessageDigest.getInstance("SHA-256").digest(s.toByteArray())
         return d.joinToString("") { "%02x".format(it) }
     }

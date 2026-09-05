@@ -45,7 +45,7 @@ class HttpClient(context: Context) {
 
     fun postForm(url: String, body: FormBody, referer: String? = null): String {
         SharedCookies.jar.flush()
-        RateLimiter.acquire(siteOf(url))
+        RateLimiter.acquire(UrlUtils.baseUrlOf(url))
         val req = Request.Builder()
             .url(url)
             .post(body)
@@ -53,7 +53,7 @@ class HttpClient(context: Context) {
             .header("Accept", "*/*")
             .header("X-Requested-With", "XMLHttpRequest")
             .header("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8")
-            .apply { header("Referer", referer ?: siteOf(url)) }
+            .apply { header("Referer", referer ?: UrlUtils.baseUrlOf(url)) }
             .build()
         Log.i(TAG, "POST $url")
         client.newCall(req).execute().use { res ->
@@ -66,12 +66,12 @@ class HttpClient(context: Context) {
 
     private fun getHtmlOkHttp(url: String): String {
         SharedCookies.jar.flush()
-        RateLimiter.acquire(siteOf(url))
+        RateLimiter.acquire(UrlUtils.baseUrlOf(url))
         val req = Request.Builder()
             .url(url)
             .header("User-Agent", ua)
             .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
-            .header("Referer", siteOf(url))
+            .header("Referer", UrlUtils.baseUrlOf(url))
             .build()
         // 429/5xx → retry with exponential backoff; CF is NOT retried (needs WebView).
         var lastError: Exception? = null
@@ -80,14 +80,14 @@ class HttpClient(context: Context) {
                 val delayMs = RETRY_BASE_MS * (1L shl (attempt - 1))
                 Log.i(TAG, "retry $attempt/$MAX_RETRIES in ${delayMs}ms for $url")
                 Thread.sleep(delayMs)
-                RateLimiter.acquire(siteOf(url))
+                RateLimiter.acquire(UrlUtils.baseUrlOf(url))
             }
             try {
                 client.newCall(req).execute().use { res ->
                     val body = res.body?.string().orEmpty()
                     Log.i(TAG, "OkHttp ${res.code} len=${body.length}")
                     if (looksLikeCf(res.code, body)) {
-                        throw CfChallengeException(siteOf(url))
+                        throw CfChallengeException(UrlUtils.baseUrlOf(url))
                     }
                     if ((res.code == 429 || res.code >= 500) && attempt < MAX_RETRIES) {
                         throw RetryableHttpException(res.code)
@@ -100,13 +100,6 @@ class HttpClient(context: Context) {
             }
         }
         throw lastError ?: IllegalStateException("HTTP request failed: $url")
-    }
-
-    private fun siteOf(url: String): String = try {
-        val u = java.net.URI(url)
-        "${u.scheme}://${u.host}/"
-    } catch (_: Exception) {
-        "https://bacalightnovel.co/"
     }
 
     private fun looksLikeCf(code: Int, body: String): Boolean {

@@ -7,6 +7,7 @@ import com.novelreader.network.RateLimiter
 import com.novelreader.network.RetryableHttpException
 import com.novelreader.network.SessionWebView
 import com.novelreader.network.SharedCookies
+import com.novelreader.network.UrlUtils
 import okhttp3.CookieJar
 import okhttp3.FormBody
 import okhttp3.OkHttpClient
@@ -105,12 +106,7 @@ class NovelLoaderContext(val context: Context) {
         }
     }
 
-    private fun hostOf(url: String): String = try {
-        val u = java.net.URI(url)
-        "${u.scheme}://${u.host}/"
-    } catch (_: Exception) {
-        url
-    }
+    private fun hostOf(url: String): String = UrlUtils.baseUrlOf(url)
 
     private fun looksLikeCf(code: Int, body: String): Boolean {
         val b = body.lowercase()
