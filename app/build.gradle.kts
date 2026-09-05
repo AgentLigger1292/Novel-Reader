@@ -17,10 +17,28 @@ android {
         versionName = "0.2.17"
     }
 
+    signingConfigs {
+        create("release") {
+            val keystorePropsFile = rootProject.file("keystore.properties")
+            if (keystorePropsFile.exists()) {
+                val map = keystorePropsFile.readLines()
+                    .filter { it.isNotBlank() && '=' in it }
+                    .associate { line ->
+                        val (k, v) = line.split('=', limit = 2)
+                        k.trim() to v.trim()
+                    }
+                storeFile = file(map["storeFile"]!!)
+                storePassword = map["storePassword"]!!
+                keyAlias = map["keyAlias"]!!
+                keyPassword = map["keyPassword"]!!
+            }
+        }
+    }
     buildTypes {
         release {
             isMinifyEnabled = false
             isShrinkResources = false
+            signingConfig = signingConfigs.getByName("release")
         }
     }
     compileOptions {
