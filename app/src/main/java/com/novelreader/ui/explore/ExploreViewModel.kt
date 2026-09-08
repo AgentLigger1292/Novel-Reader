@@ -69,7 +69,15 @@ class ExploreViewModel(private val container: AppContainer) : ViewModel() {
 
     fun reload() {
         loadSeq++
-        _state.value = _state.value.copy(page = 0, novels = emptyList(), endReached = false)
+        // Clear loading too: if a previous search is still in flight, loadMore()
+        // would early-return on `s.loading` and the stale load bails via the seq
+        // guard without resetting it — leaving the spinner stuck on forever.
+        _state.value = _state.value.copy(
+            page = 0,
+            novels = emptyList(),
+            endReached = false,
+            loading = false,
+        )
         loadMore()
     }
 

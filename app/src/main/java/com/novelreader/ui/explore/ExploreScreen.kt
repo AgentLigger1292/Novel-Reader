@@ -141,7 +141,7 @@ fun ExploreScreen(
                 }
             }
         }
-        Box(Modifier.fillMaxSize()) {
+        Box(Modifier.weight(1f)) {
             LazyVerticalGrid(
                 columns = GridCells.Fixed(3),
                 state = gridState,

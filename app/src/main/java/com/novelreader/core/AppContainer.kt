@@ -18,6 +18,7 @@ import com.novelreader.core.update.AppUpdate
 import com.novelreader.core.update.GitHubUpdateChecker
 import com.novelreader.source.LocalEpubSource
 import com.novelreader.source.SonicMtlParser
+import com.novelreader.source.WtrLabParser
 import com.novelreader.translate.AiTranslationRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -52,6 +53,8 @@ class AppContainer(context: Context) {
         put(mistmint.id, mistmint)
         val sonic = SonicMtlParser(loaderContext)
         put(sonic.id, sonic)
+        val wtrlab = WtrLabParser(loaderContext)
+        put(wtrlab.id, wtrlab)
         // local EPUB import — offline, must stay out of Explore/seed (see SourcesRepository)
         val local = LocalEpubSource(db)
         put(local.id, local)

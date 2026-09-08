@@ -6,11 +6,13 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -67,22 +69,19 @@ fun SourceGrid(
     onSelect: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        sources.chunked(4).forEach { rowSources ->
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                rowSources.forEach { s ->
-                    SourceTile(
-                        source = s,
-                        selected = s.id == selectedId,
-                        onClick = { onSelect(s.id) },
-                        modifier = Modifier.weight(1f),
-                    )
-                }
-                // keep tiles evenly sized on the last, shorter row
-                repeat(4 - rowSources.size) {
-                    Box(Modifier.weight(1f))
-                }
-            }
+    // Single horizontal row: every source stays reachable by side-scroll, and the
+    // picker never grows tall enough to push the novel grid below the fold.
+    LazyRow(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        items(sources, key = { it.id }) { s ->
+            SourceTile(
+                source = s,
+                selected = s.id == selectedId,
+                onClick = { onSelect(s.id) },
+                modifier = Modifier.width(100.dp),
+            )
         }
     }
 }
