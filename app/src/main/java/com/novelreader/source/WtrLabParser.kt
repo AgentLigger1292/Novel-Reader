@@ -114,9 +114,15 @@ class WtrLabParser(context: NovelLoaderContext) : PagedNovelParser(
     }
 
     override suspend fun getSearchPage(query: String, page: Int): List<Novel> {
+        // The site's /api/search ignores `q` and returns the same ~10 default rows
+        // regardless of query — filter client-side like the other parsers do.
         val url = "$domainUrl/api/search?q=${URLEncoder.encode(query, "UTF-8")}"
         val j = JSONObject(get(url))
-        return parseSeries(j.optJSONArray("data") ?: JSONArray())
+        val lower = query.lowercase()
+        return parseSeries(j.optJSONArray("data") ?: JSONArray()).filter {
+            it.title.lowercase().contains(lower) ||
+                (it.author?.lowercase()?.contains(lower) == true)
+        }
     }
 
     override suspend fun getDetails(path: String): NovelDetail {
@@ -161,16 +167,17 @@ class WtrLabParser(context: NovelLoaderContext) : PagedNovelParser(
             return "<p>${escape(msg)}</p>"
         }
         val inner = resp.optJSONObject("data")?.optJSONObject("data")
+        val terms = resolveTerms(inner)
         val sb = StringBuilder()
         val arr = inner?.optJSONArray("body")
         if (arr != null) {
             for (i in 0 until arr.length()) {
                 val p = arr.optString(i)
-                if (p.isNotBlank()) sb.append("<p>").append(escape(p)).append("</p>")
+                if (p.isNotBlank()) sb.append("<p>").append(escape(replaceTokens(p, terms))).append("</p>")
             }
         } else {
             val s = inner?.optString("body").orEmpty()
-            if (s.isNotBlank()) sb.append("<p>").append(escape(s)).append("</p>")
+            if (s.isNotBlank()) sb.append("<p>").append(escape(replaceTokens(s, terms))).append("</p>")
         }
         return sb.toString().ifBlank { "<p>Chapter kosong.</p>" }
     }
@@ -181,6 +188,28 @@ class WtrLabParser(context: NovelLoaderContext) : PagedNovelParser(
         if (!SLUG.matches(slug)) error("bad novel slug: $path")
         return id to slug
     }
+
+    /** Glossary terms: `※NN⛬` = index into terms[NN] (English/romanized name). */
+    private fun resolveTerms(inner: org.json.JSONObject?): List<String> {
+        val gd = inner?.optJSONObject("glossary_data") ?: return emptyList()
+        val terms = gd.optJSONArray("terms") ?: return emptyList()
+        val out = ArrayList<String>(terms.length())
+        for (i in 0 until terms.length()) {
+            val pair = terms.optJSONArray(i)
+            // term is pair[0] (EN name); keep blank-safe so a bad index yields empty
+            out.add(if (pair != null && pair.length() > 0) pair.optString(0) else "")
+        }
+        return out
+    }
+
+    private val TOKEN = Regex("※(\\d+)[⛬〓]")
+
+    /** Replace `※NN⛬` with the glossary name; leave unmapped tokens as-is. */
+    internal fun replaceTokens(s: String, terms: List<String>): String =
+        TOKEN.replace(s) { m ->
+            val i = m.groupValues[1].toIntOrNull()
+            if (i != null && i in terms.indices && terms[i].isNotBlank()) terms[i] else m.value
+        }
 
     private fun escape(s: String): String =
         s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
