@@ -10,7 +10,7 @@
 [![Android](https://img.shields.io/badge/Platform-Android%208.0%2B%20(API%2026%2B)-green.svg?logo=android)](https://android.com)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-[Fitur Utama](#-fitur-utama) • [Sumber Novel](#-sumber-novel-didukung) • [Terjemahan Mesin & AI](#-mesin-terjemahan-mtl--ai) • [Arsitektur](#-arsitektur-kotatsu-style) • [Panduan Build](#️-cara-build--install)
+[Download APK Terbaru (v0.2.18)](https://github.com/AgentLigger1292/Novel-Reader/releases/latest) • [Fitur Utama](#-fitur-utama) • [Sumber Novel](#-sumber-novel-didukung) • [Terjemahan Mesin & AI](#-mesin-terjemahan-mtl--ai) • [Arsitektur](#-arsitektur-kotatsu-style) • [Panduan Build](#️-cara-build--install)
 
 </div>
 
