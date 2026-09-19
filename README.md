@@ -10,7 +10,7 @@
 [![Android](https://img.shields.io/badge/Platform-Android%208.0%2B%20(API%2026%2B)-green.svg?logo=android)](https://android.com)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-[Download APK Terbaru (v0.2.1)](https://github.com/AgentLigger1292/Novel-Reader/releases/latest) • [Fitur](#-fitur-utama) • [Sumber Novel](#-sumber-novel-didukung) • [Arsitektur](#-arsitektur-kotatsu-style) • [Panduan Build](#️-cara-build--install)
+[Fitur Utama](#-fitur-utama) • [Sumber Novel](#-sumber-novel-didukung) • [Terjemahan Mesin & AI](#-mesin-terjemahan-mtl--ai) • [Arsitektur](#-arsitektur-kotatsu-style) • [Panduan Build](#️-cara-build--install)
 
 </div>
 
@@ -18,114 +18,134 @@
 
 ## 🌟 Fitur Utama
 
-- **🚀 Native & Ringan**: Murni **Kotlin + Jetpack Compose**, arsitektur MVVM (ViewModel per layar, Repository, manual DI).
-- **📚 Multi-Source Novel**: Browse & search dari beberapa situs novel, dengan **infinite-scroll pagination** dan search debounce.
-- **🔊 Text-to-Speech (TTS) Bawaan**: Dengarkan novel dibacakan per-paragraf dengan *auto-scroll* layar mengikuti bacaan.
-- **📥 Download Offline Tahan Navigasi**: Unduh seluruh chapter via **WorkManager** — keluar dari layar pun unduhan tetap lanjut, lengkap dengan notifikasi progress.
-- **🔔 Feed Update Otomatis**: Novel favourite diperiksa berkala oleh tracker worker; chapter baru muncul di tab **Feed** + notifikasi.
-- **⏯️ Lanjut Baca Presisi**: Posisi baca (scroll & percent per chapter) **tersimpan otomatis** ke database dan dilanjutkan saat dibuka lagi — dari History, Details, maupun Feed.
-- **🛡️ Bypass Cloudflare Manual**: WebView internal untuk menyelesaikan challenge sekali klik; cookies sesi disinkronkan ke seluruh aplikasi.
-- **🎨 Reader Kustom**: Tema Dark / OLED / Nordic / Sepia / Light, pilihan font, ukuran teks, spasi baris, perataan — **semua tersimpan permanen**.
-- **💾 Data Aman**: Room database + atomic file writes; data lama (v0.1.x) dimigrasi otomatis saat pertama dibuka.
+- **🚀 Native, Responsif & Ringan**: Murni **Kotlin + Jetpack Compose**, arsitektur MVVM (ViewModel per layar, Repository, manual DI).
+- **📚 Multi-Source Web Novel**: Jelajahi dan cari novel dari 6+ sumber web novel terkemuka dengan **auto-pagination** sekuensial dan pencarian ter-debounce.
+- **🏷️ Filter Genre Interaktif**: Filter novel berdasarkan genre favorit langsung dari bilah pencarian Explore untuk setiap sumber.
+- **🌐 Machine Translation (MTL) & AI Streaming**: Terjemahkan bab berbahasa asing langsung ke Bahasa Indonesia (atau bahasa lain) menggunakan **Google Translate gratis (tanpa API key)** maupun model AI canggih (**Gemini** & **OpenAI-compatible endpoints**).
+- **📱 Tata Letak Adaptif (Tablet & Ponsel)**: Grid adaptif otomatis menyesuaikan ukuran layar — tetap rapi dan proporsional baik dalam mode portrait ponsel maupun landscape/tablet.
+- **🖼️ Smart Cover Caching**: Pemuatan sampul buku cepat dan tahan Cloudflare menggunakan headless WebView canvas rendering, deduplikasi unduhan, dan cache disk PNG otomatis.
+- **📖 Impor EPUB Lokal**: Impor file ebook `.epub` dari penyimpanan lokal langsung ke perpustakaan.
+- **🔊 Text-to-Speech (TTS) Bawaan**: Dengarkan bab novel dibacakan per-paragraf dengan auto-scroll layar otomatis mengikuti bacaan.
+- **📥 Unduh Offline Background**: Unduh seluruh bab via **WorkManager** — unduhan tetap berlanjut di latar belakang lengkap dengan notifikasi kemajuan.
+- **⏯️ Lanjut Baca Presisi**: Posisi baca (scroll & persentase bab) tersimpan otomatis ke Room database dan dilanjutkan saat dibuka kembali dari History atau Library.
+- **🛡️ Bypass Cloudflare Manual**: WebView internal untuk menyelesaikan challenge verifikasi sekali klik dengan sinkronisasi cookie sesi ke seluruh aplikasi.
+- **🎨 Pengaturan Reader Lengkap**: Tema Dark / OLED / Nordic / Sepia / Light, pilihan font, ukuran teks, spasi baris, dan perataan teks tersimpan permanen.
 
 ---
 
 ## 🌐 Sumber Novel Didukung
 
-| Sumber | URL Situs | Engine | Status |
+| Sumber | URL Situs | Tipe Engine | Fitur & Status |
 |---|---|---|---|
-| **Baca Light Novel** | `https://bacalightnovel.co` | Themesia / WordPress | ✅ Aktif (Browse, Search, 1000+ Chapters) |
-| **Sakura Novel** | `https://sakuranovel.id` | Custom ZNovel / WP | ✅ Aktif (Browse, Search, Multi-markup) |
-| **Mistmint Haven** | `https://www.mistminthaven.com` | Next.js (REST API) | ✅ Aktif (Auto-skip paywall, S3 Covers) |
+| **WoopRead** | `https://woopread.com` | Next.js App Router + REST API | ✅ Browse, Search, 35 Genre, API Chapters |
+| **WTR-Lab** | `https://wtr-lab.com` | Next.js Page Router + JSON Data | ✅ Popular, Search, Genre, Token Replacement |
+| **Baca Light Novel** | `https://bacalightnovel.co` | Themesia / WordPress | ✅ Browse, Search, Genre, 1000+ Chapters |
+| **Sakura Novel** | `https://sakuranovel.id` | ZNovel / WordPress | ✅ Browse, Search, Genre, Multi-markup |
+| **Mistmint Haven** | `https://mistminthaven.com` | Next.js + REST API | ✅ Browse, Search, Category Filter, S3 Covers |
+| **Sonic MTL** | `https://sonicmtl.com` | Madara / WordPress | ✅ Browse, Search, Genre, Ajax Chapters |
+| **Local EPUB** | *Offline Storage* | EPUB ZIP Parser | ✅ Impor lokal, membaca offline tanpa internet |
 
-Parser terverifikasi langsung terhadap DOM live situs dan dilindungi unit test berbasis fixture HTML/JSON asli (35+ test).
+Semua parser dilindungi oleh unit test berbasis fixture HTML/JSON nyata (**87 unit test** lulus uji).
 
 ---
 
-## 📱 Cara Pakai
+## 🤖 Mesin Terjemahan (MTL & AI)
 
-1. **Jelajahi**: Tab **Explore** → pilih source → scroll (auto load-more) atau cari judul.
-2. **Cloudflare**: Kalau terkena challenge, tekan **CF (shield)** → selesaikan verifikasi di WebView → **Done**.
-3. **Favourite**: Tekan ikon ❤️ di halaman detail novel → otomatis masuk pelacakan update Feed.
-4. **Download**: Ikon ⬇️ di halaman detail → unduhan berjalan di background (notifikasi progress), bisa dibaca dari tab **Explore → ikon download** atau langsung offline.
-5. **Baca**: Pilih chapter → posisi baca tersimpan otomatis; buka lagi dari **History** untuk lanjut persis di posisi terakhir.
-6. **Dengarkan**: Ikon 🔊 di toolbar reader → TTS membaca paragraf dengan auto-scroll.
+Novel Reader menyediakan 3 mode penerjemahan bab di dalam reader:
+
+1. **Google MTL (Gratis / Siap Pakai)**:
+   - Terjemahan mesin instan menggunakan public Google Translate engine.
+   - **Tanpa perlu API key, registrasi, atau konfigurasi khusus**. Cukup 1 klik untuk langsung membaca dalam Bahasa Indonesia.
+2. **Google Gemini API**:
+   - Terjemahan kontekstual berkualitas tinggi menggunakan model Gemini (misal `gemini-2.0-flash`, `gemini-2.5`, dll.).
+   - Mendukung streaming Server-Sent Events (SSE) paragraf demi paragraf secara live.
+3. **OpenAI-Compatible Endpoint**:
+   - Terhubung ke OpenAI, OpenRouter, Groq, Ollama, LM Studio, vLLM, atau model mandiri lainnya.
+   - Dilengkapi validasi keamanan URL dan pencegahan akses ke subnet privat.
+
+Hasil terjemahan disimpan di database lokal Room (`TranslationEntity`) sehingga bab yang sudah diterjemahkan dapat dibuka kembali secara instan tanpa menggunakan kuota/request ulang.
+
+---
+
+## 📱 Cara Penggunaan
+
+1. **Eksplorasi & Filter**: Buka tab **Explore** → pilih sumber di bagian atas → ketik kata kunci pencarian atau klik chip **Genre** ("Semua", "Fantasy", "Action", "Romance", dll.).
+2. **Cloudflare**: Jika sumber meminta verifikasi Cloudflare, tekan tombol **Shield (CF)** → selesaikan captcha di WebView → tekan **Done**.
+3. **Membaca & Terjemah**:
+   - Buka novel dan pilih bab yang diinginkan.
+   - Tekan ikon **Translate** di bilah atas untuk menerjemahkan bab (pilih Google MTL untuk terjemahan instan gratis).
+   - Tekan ikon **TTS (Speaker)** untuk mendengarkan bacaan audio.
+4. **Koleksi & Offline**:
+   - Tekan ikon ❤️ untuk menyimpan novel ke tab **Library (Koleksi)**.
+   - Tekan ikon ⬇️ untuk mengunduh seluruh bab ke penyimpanan offline.
+   - Tekan **Impor EPUB** untuk menambahkan file buku lokal ke koleksi.
 
 ---
 
 ## 🏗️ Arsitektur (Kotatsu-style)
 
-Single Gradle module, **package-by-feature**, MVVM + Repository, manual DI (tanpa Hilt) — pola yang sama dipakai aplikasi [Kotatsu](https://github.com/Kotatsu-Redo/Kotatsu-Redo), diadaptasi untuk teks novel.
+Single Gradle module (`:app`), **package-by-feature**, MVVM + Repository, dan manual Dependency Injection:
 
 ```
 com.novelreader/
 ├── core/
-│   ├── db/          # Room: novels, chapters, history,
-│   │                # favourites(+categories), sources, tracks
-│   ├── parser/      # SourcesRepository (facade atas parser)
+│   ├── db/          # Room: novels, chapters, history, favourites, sources, translations
+│   ├── parser/      # PagedNovelParser, WordPressNovelParser, SourcesRepository
 │   ├── prefs/       # AppSettings (SharedPreferences ter-tipe)
-│   ├── migration/   # migrasi one-shot JSON lama → Room
-│   └── AppContainer # manual DI (db, repos, prefs, workers)
-├── source/          # Parser website (TIDAK berubah sejak v0.1.x)
-│   ├── NovelSource.kt + wp/ (WordPress base: WpParse, ChapterRules)
-│   └── BacaLightNovel / SakuraNovel / MistmintHaven
-├── network/         # HttpClient (rate-limit + retry), SessionWebView (CF), CoverLoader
-├── work/            # DownloadWorker & TrackWorker (WorkManager)
-├── data/            # DownloadStore (offline files), NovelCache (LruCache)
+│   ├── migration/   # Migrasi legacy JSON → Room
+│   └── AppContainer # Manual DI container
+├── source/          # Parser website (WoopRead, WtrLab, BacaLightNovel, SakuraNovel, etc.)
+│   └── wp/          # WordPress/Themesia/Madara parser rules (WpParse, ChapterRules)
+├── network/         # HttpClient (rate-limit + retry), SessionWebView, CoverLoader, Deduper
+├── translate/       # AiTranslationApi (Gemini, OpenAI, Google MTL), StreamParser, Repository
+├── work/            # DownloadWorker (background offline downloader)
+├── data/            # DownloadStore (offline files), NovelCache (memory cache)
 └── ui/
-    ├── AppNav       # bottom nav: Feed · History · Favourite · Explore
-    ├── explore/  details/  reader/  lists/   # per-feature screen + ViewModel
-    └── ReaderTts, ReaderTheme, HtmlText       # shared reader pieces
+    ├── AppNav       # Navigasi tab: Library · History · Explore
+    ├── explore/     # ExploreScreen, ExploreViewModel, ExplorePagination, SourceGrid
+    ├── details/     # DetailsScreen, DetailsViewModel
+    ├── reader/      # ReaderScreen, ReaderViewModel, ReaderTheme, ReaderTts
+    └── lists/       # FeedScreen (Koleksi), HistoryScreen, DownloadsScreen, ListUi
 ```
-
-Alur data ringkas: `Explore → SourcesRepository → NovelSource (parser)` → detail di-cache ke Room (`NovelEntity` + `ChapterEntity`) → `HistoryRepository` menyimpan progress baca → `DownloadWorker`/`TrackWorker` menangani kerja background. Detail lengkap: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ---
 
 ## 🛠️ Cara Build & Install
 
 ### Prasyarat
-- **JDK 17** (Eclipse Adoptium direkomendasikan)
+- **JDK 17** (Eclipse Adoptium OpenJDK 17)
 - **Android SDK** — `compileSdk 36`, `minSdk 26`
-- `adb` opsional untuk instalasi langsung
+- **ADB** (opsional untuk install ke emulator/perangkat fisik)
 
-### Windows (PowerShell)
-```powershell
-cd novel-reader
+### Menjalankan Verifikasi & Unit Test
+Gunakan script verifikasi bawaan repo:
 
-$env:JAVA_HOME = "C:\Program Files\Eclipse Adoptium\jdk-17.0.19.10-hotspot"
-$env:ANDROID_HOME = "$env:LOCALAPPDATA\Android\Sdk"
-$env:Path = "$env:JAVA_HOME\bin;$env:ANDROID_HOME\platform-tools;$env:Path"
-
-# unit test (41 tests: parser fixtures + migrasi + chapter rules)
-.\gradlew.bat testDebugUnitTest
-
-# build release APK
-.\gradlew.bat assembleRelease
+```bash
+# Git Bash / Linux / macOS
+bash scripts/verify.sh          # Compile + 87 unit tests + build debug APK
+bash scripts/verify.sh --quick  # Compile + unit tests cepat
 ```
 
-### Linux / macOS (Bash)
+### Build Manual dengan Gradle
 ```bash
-cd novel-reader
-export JAVA_HOME=/path/to/jdk-17
-export ANDROID_HOME=$HOME/Android/Sdk
-
+# Unit test
 ./gradlew testDebugUnitTest
+
+# Build APK Debug
+./gradlew assembleDebug
+
+# Build APK Release (memerlukan keystore.properties)
 ./gradlew assembleRelease
 ```
 
-Output APK:
+File APK yang dihasilkan:
 - **Debug**: `app/build/outputs/apk/debug/app-debug.apk`
-- **Release**: `app/build/outputs/apk/release/app-release-unsigned.apk`
-
-### Menambah Sumber Baru
-Situs WordPress baru cukup sebagai subclass `WordPressSource` (~60 baris selector + URL candidates) — lihat [docs/CUSTOMIZING.md](docs/CUSTOMIZING.md). Situs non-WordPress (API khusus) implementasi `NovelSource` langsung seperti `MistmintHavenSource`.
+- **Release**: `app/build/outputs/apk/release/app-release.apk`
 
 ---
 
-## 📄 Disclaimer & Lisensi
+## 📄 Lisensi & Ketentuan
 
-- Projek ini dikembangkan untuk tujuan **edukasi dan penggunaan personal**.
-- Tidak berafiliasi dengan penyedia konten manapun; konten diambil dari web publik — hormati ToS & hak cipta situs sumber.
-- Tidak ada solver captcha otomatis; Cloudflare diselesaikan manual oleh user via WebView.
-- Didistribusikan di bawah **MIT License** — lihat [LICENSE](LICENSE).
+- Proyek ini dikembangkan untuk tujuan edukasi dan penggunaan personal.
+- Tidak berafiliasi dengan penyedia web novel manapun; konten diambil dari web publik — harap menghormati hak cipta dan ToS masing-masing situs.
+- Didistribusikan di bawah [MIT License](LICENSE).

@@ -7,6 +7,7 @@ import okio.Buffer
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -181,5 +182,26 @@ class AiTranslationApiTest {
         assertTrue(!"file:///etc/passwd".isValidHttpUrl())
         assertTrue(!"ftp://example.com".isValidHttpUrl())
         assertTrue(!"not a url".isValidHttpUrl())
+    }
+
+    @Test
+    fun google_mtl_response_parses_segments() {
+        val json = """[[["[1] Halo dunia.\n","[1] Hello world.\n",null,null,1],["[2] Bab satu.","[2] Chapter one.",null,null,1]],null,"en"]"""
+        val parsed = AiTranslationApi.parseGoogleMtlResponse(json)
+        assertEquals("[1] Halo dunia.\n[2] Bab satu.", parsed)
+
+        val aligned = AiTranslationApi.alignResults(parsed, 2)
+        assertEquals(listOf("Halo dunia.", "Bab satu."), aligned)
+    }
+
+    @Test
+    fun google_mtl_provider_initializes_without_strict_base_url() {
+        val api = AiTranslationApi(
+            provider = AiTranslationApi.PROVIDER_GOOGLE_MTL,
+            baseUrl = "",
+            apiKey = "",
+            model = "google-mtl",
+        )
+        assertNotNull(api)
     }
 }

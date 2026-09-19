@@ -1,0 +1,38 @@
+{
+  "pageProps": {
+    "count": "48",
+    "series": [
+      {
+        "id": 94903,
+        "raw_id": 99077,
+        "slug": "reborn-godzilla",
+        "data": {
+          "title": "Reborn Godzilla",
+          "author": "Xing Yun",
+          "description": "Reborn Godzilla description.",
+          "image": "https://img.wtr-lab.com/cdn/series/reborn.jpg?w=120&h=150"
+        }
+      },
+      {
+        "id": 95103,
+        "slug": "the-giant-monster-godzilla",
+        "data": {
+          "title": "The Giant Monster Godzilla",
+          "author": "Dong Xiang",
+          "image": "/cdn/series/monster.jpg"
+        }
+      },
+      {
+        "id": 0,
+        "slug": "invalid-zero-id",
+        "data": { "title": "Skip me" }
+      },
+      {
+        "id": 99999,
+        "slug": "invalid slug",
+        "data": { "title": "Skip me too" }
+      },
+      null
+    ]
+  }
+}

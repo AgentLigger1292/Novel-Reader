@@ -18,9 +18,13 @@ import kotlinx.coroutines.withContext
  */
 class SourcesRepository(
     private val sources: Map<String, NovelSource>,
+    private val catalogIds: List<String>,
     private val db: NovelDatabase,
 ) {
     val all: Collection<NovelSource> get() = sources.values
+
+    /** Sources surfaced to users (Explore grid) — excludes infrastructure sources. */
+    val catalog: List<NovelSource> get() = catalogIds.mapNotNull(sources::get)
 
     fun byId(sourceId: String): NovelSource? = sources[sourceId]
 
@@ -32,16 +36,15 @@ class SourcesRepository(
     suspend fun seedSources(selectedId: String) {
         val existing = db.sourcesDao().all()
         if (existing.isEmpty()) {
-            val enabled = sources.keys.filter { it != "dummy" && it != "local_epub" }
             db.sourcesDao().upsertAll(
-                enabled.mapIndexed { i, id ->
+                catalogIds.mapIndexed { i, id ->
                     SourceEntity(sourceId = id, enabled = true, sortKey = i)
                 },
             )
             return
         }
         // app updates can ship new parsers — append sources missing from the DB
-        val added = sources.keys.filter { it != "dummy" && it != "local_epub" && existing.none { e -> e.sourceId == it } }
+        val added = catalogIds.filter { id -> existing.none { e -> e.sourceId == id } }
         if (added.isNotEmpty()) {
             db.sourcesDao().upsertAll(
                 added.mapIndexed { i, id ->

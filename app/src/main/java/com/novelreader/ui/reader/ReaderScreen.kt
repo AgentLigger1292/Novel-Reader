@@ -782,12 +782,13 @@ private fun AiTranslateSheet(
             Text("Provider", color = palette.muted, style = MaterialTheme.typography.labelLarge)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf(
+                    com.novelreader.translate.AiTranslationApi.PROVIDER_GOOGLE_MTL to "Google MTL",
                     com.novelreader.translate.AiTranslationApi.PROVIDER_GEMINI to "Gemini API",
-                    com.novelreader.translate.AiTranslationApi.PROVIDER_OPENAI to "OpenAI-compatible",
+                    com.novelreader.translate.AiTranslationApi.PROVIDER_OPENAI to "OpenAI",
                 ).forEach { (id, label) ->
                     val selected = provider == id
                     OutlinedButton(
-                        onClick = { provider = id },
+                        onClick = { provider = id; save() },
                         shape = RoundedCornerShape(10.dp),
                         modifier = Modifier.weight(1f),
                         border = androidx.compose.foundation.BorderStroke(
@@ -804,38 +805,46 @@ private fun AiTranslateSheet(
                     }
                 }
             }
-            OutlinedTextField(
-                value = baseUrl,
-                onValueChange = { baseUrl = it; save() },
-                enabled = provider == com.novelreader.translate.AiTranslationApi.PROVIDER_OPENAI,
-                label = { Text("Base URL") },
-                placeholder = { Text("https://api.openai.com/v1") },
-                singleLine = true,
-                textStyle = MaterialTheme.typography.bodySmall,
-                modifier = Modifier.fillMaxWidth(),
-            )
-            OutlinedTextField(
-                value = apiKey,
-                onValueChange = { apiKey = it; save() },
-                label = { Text(if (provider == com.novelreader.translate.AiTranslationApi.PROVIDER_GEMINI) "Gemini API key" else "API key") },
-                placeholder = { Text("tempel API key di sini") },
-                singleLine = true,
-                textStyle = MaterialTheme.typography.bodySmall,
-                modifier = Modifier.fillMaxWidth(),
-            )
-            OutlinedTextField(
-                value = model,
-                onValueChange = { model = it; save() },
-                label = { Text("Model") },
-                placeholder = {
-                    Text(
-                        if (provider == com.novelreader.translate.AiTranslationApi.PROVIDER_GEMINI) "gemini-2.0-flash" else "gpt-4o-mini",
-                    )
-                },
-                singleLine = true,
-                textStyle = MaterialTheme.typography.bodySmall,
-                modifier = Modifier.fillMaxWidth(),
-            )
+            if (provider == com.novelreader.translate.AiTranslationApi.PROVIDER_GOOGLE_MTL) {
+                Text(
+                    "Terjemahan mesin instan (Google Translate). Gratis, tanpa API key.",
+                    color = palette.muted,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            } else {
+                OutlinedTextField(
+                    value = baseUrl,
+                    onValueChange = { baseUrl = it; save() },
+                    enabled = provider == com.novelreader.translate.AiTranslationApi.PROVIDER_OPENAI,
+                    label = { Text("Base URL") },
+                    placeholder = { Text("https://api.openai.com/v1") },
+                    singleLine = true,
+                    textStyle = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                OutlinedTextField(
+                    value = apiKey,
+                    onValueChange = { apiKey = it; save() },
+                    label = { Text(if (provider == com.novelreader.translate.AiTranslationApi.PROVIDER_GEMINI) "Gemini API key" else "API key") },
+                    placeholder = { Text("tempel API key di sini") },
+                    singleLine = true,
+                    textStyle = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                OutlinedTextField(
+                    value = model,
+                    onValueChange = { model = it; save() },
+                    label = { Text("Model") },
+                    placeholder = {
+                        Text(
+                            if (provider == com.novelreader.translate.AiTranslationApi.PROVIDER_GEMINI) "gemini-2.0-flash" else "gpt-4o-mini",
+                        )
+                    },
+                    singleLine = true,
+                    textStyle = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
             OutlinedTextField(
                 value = lang,
                 onValueChange = { lang = it; save() },
@@ -890,7 +899,7 @@ private fun AiTranslateSheet(
             } else {
                 Button(
                     onClick = onTranslate,
-                    enabled = apiKey.isNotBlank(),
+                    enabled = provider == com.novelreader.translate.AiTranslationApi.PROVIDER_GOOGLE_MTL || apiKey.isNotBlank(),
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Text("Terjemahkan Bab Ini")

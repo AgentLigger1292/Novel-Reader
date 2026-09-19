@@ -4,21 +4,13 @@ import android.content.Context
 import com.novelreader.core.db.NovelDatabase
 import com.novelreader.core.migration.LegacyImporter
 import com.novelreader.core.parser.NovelLoaderContext
-import com.novelreader.core.parser.NovelParser
 import com.novelreader.core.parser.SourcesRepository
 import com.novelreader.core.prefs.AppSettings
 import com.novelreader.data.DownloadStore
 import com.novelreader.network.HttpClient
-import com.novelreader.source.BacaLightNovelParser
-import com.novelreader.source.DummySource
-import com.novelreader.source.MistmintHavenParser
 import com.novelreader.source.NovelSource
-import com.novelreader.source.SakuraNovelParser
 import com.novelreader.core.update.AppUpdate
 import com.novelreader.core.update.GitHubUpdateChecker
-import com.novelreader.source.LocalEpubSource
-import com.novelreader.source.SonicMtlParser
-import com.novelreader.source.WtrLabParser
 import com.novelreader.translate.AiTranslationRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -42,25 +34,9 @@ class AppContainer(context: Context) {
     val http = HttpClient(appContext)
     val loaderContext = NovelLoaderContext(appContext)
 
-    private val sourceMap: Map<String, NovelSource> = buildMap {
-        val dummy = DummySource()
-        put(dummy.id, dummy)
-        val baca = BacaLightNovelParser(loaderContext)
-        put(baca.id, baca)
-        val sakura = SakuraNovelParser(loaderContext)
-        put(sakura.id, sakura)
-        val mistmint = MistmintHavenParser(loaderContext)
-        put(mistmint.id, mistmint)
-        val sonic = SonicMtlParser(loaderContext)
-        put(sonic.id, sonic)
-        val wtrlab = WtrLabParser(loaderContext)
-        put(wtrlab.id, wtrlab)
-        // local EPUB import — offline, must stay out of Explore/seed (see SourcesRepository)
-        val local = LocalEpubSource(db)
-        put(local.id, local)
-    }
+    private val sourceRegistry = SourceRegistry(loaderContext, db)
 
-    val sourcesRepository = SourcesRepository(sourceMap, db)
+    val sourcesRepository = SourcesRepository(sourceRegistry.sources, sourceRegistry.catalogIds, db)
     val historyRepository = HistoryRepository(db)
     val favouritesRepository = FavouritesRepository(db)
     val aiTranslation = AiTranslationRepository(db.translationsDao())

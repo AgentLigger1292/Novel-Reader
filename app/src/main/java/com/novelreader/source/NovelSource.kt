@@ -11,6 +11,8 @@ interface NovelSource {
 
     suspend fun getPopular(page: Int): List<Novel>
     suspend fun search(query: String, page: Int): List<Novel>
+    val genres: List<String> get() = emptyList()
+    suspend fun getByGenre(genre: String, page: Int): List<Novel> = emptyList()
     suspend fun getNovel(path: String): NovelDetail
     suspend fun getChapterContent(path: String): String
 }

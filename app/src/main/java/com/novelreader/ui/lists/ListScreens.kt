@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.lazy.items
@@ -87,9 +88,15 @@ fun FeedScreen(
     val local by vm.localEpubs.collectAsState(initial = emptyList())
     val update by vm.appUpdate.collectAsState()
     val context = LocalContext.current
-    LazyColumn(Modifier.fillMaxSize()) {
+    LazyVerticalGrid(
+        columns = GridCells.Adaptive(minSize = 130.dp),
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(16.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
         if (update != null) {
-            item(key = "update_banner") {
+            item(key = "update_banner", span = { GridItemSpan(maxLineSpan) }) {
                 UpdateBanner(
                     update = update!!,
                     onUpdate = {
@@ -104,45 +111,30 @@ fun FeedScreen(
             }
         }
         if (local.isNotEmpty()) {
-            items(count = 1, key = { "local_header" }) {
+            item(key = "local_header", span = { GridItemSpan(maxLineSpan) }) {
                 Text(
                     "Koleksi Lokal",
                     style = MaterialTheme.typography.titleMedium,
-                    modifier = Modifier.padding(start = 16.dp, top = 12.dp, bottom = 4.dp),
+                    modifier = Modifier.padding(top = 4.dp, bottom = 4.dp),
                 )
             }
-            items(count = 1, key = { "local_grid" }) {
-                val rows = (local.size + 2) / 3
-                LazyVerticalGrid(
-                    columns = GridCells.Fixed(3),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 12.dp)
-                        .height((rows * 200 + (rows - 1) * 12).dp),
-                    contentPadding = PaddingValues(0.dp),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                    userScrollEnabled = false,
-                ) {
-                    gridItems(local, key = { it.epubId }) { e ->
-                        NovelGridCard(
-                            title = e.title,
-                            coverUrl = e.coverUrl,
-                            onClick = { onOpenNovel("local_epub", e.epubId) },
-                        )
-                    }
-                }
+            gridItems(local, key = { "local_${it.epubId}" }) { e ->
+                NovelGridCard(
+                    title = e.title,
+                    coverUrl = e.coverUrl,
+                    onClick = { onOpenNovel("local_epub", e.epubId) },
+                )
             }
         }
-        items(count = 1, key = { "fav_header" }) {
+        item(key = "fav_header", span = { GridItemSpan(maxLineSpan) }) {
             Text(
                 "Koleksi",
-                style = MaterialTheme.typography.titleMedium,
-                modifier = Modifier.padding(start = 16.dp, top = 12.dp, bottom = 4.dp),
+                style = MaterialTheme.typography.titleLarge,
+                modifier = Modifier.padding(top = if (local.isNotEmpty()) 12.dp else 0.dp, bottom = 4.dp),
             )
         }
         if (favourites.isEmpty()) {
-            items(count = 1, key = { "fav_empty" }) {
+            item(key = "fav_empty", span = { GridItemSpan(maxLineSpan) }) {
                 Box(
                     Modifier.fillMaxWidth().padding(top = 80.dp, bottom = 80.dp),
                     contentAlignment = Alignment.Center,
@@ -155,27 +147,12 @@ fun FeedScreen(
                 }
             }
         } else {
-            items(count = 1, key = { "fav_grid" }) {
-                val rows = (favourites.size + 2) / 3
-                LazyVerticalGrid(
-                    columns = GridCells.Fixed(3),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 12.dp)
-                        .height((rows * 200 + (rows - 1) * 12).dp),
-                    contentPadding = PaddingValues(0.dp),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                    userScrollEnabled = false,
-                ) {
-                    gridItems(favourites, key = { it.novelId }) { f ->
-                        NovelGridCard(
-                            title = f.title,
-                            coverUrl = f.coverUrl,
-                            onClick = { onOpenNovel(f.sourceId, f.path) },
-                        )
-                    }
-                }
+            gridItems(favourites, key = { it.novelId }) { f ->
+                NovelGridCard(
+                    title = f.title,
+                    coverUrl = f.coverUrl,
+                    onClick = { onOpenNovel(f.sourceId, f.path) },
+                )
             }
         }
     }

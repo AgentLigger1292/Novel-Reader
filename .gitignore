@@ -17,3 +17,6 @@ keystore.properties
 .kotlin/
 *.log
 .DS_Store
+*.idsig
+.mimosa/
+.zcode/

@@ -1,0 +1,28 @@
+{
+  "pageProps": {
+    "count": "48",
+    "series": [
+      {
+        "id": 86154,
+        "raw_id": 89902,
+        "slug": "a-certain-scientific-super-godzilla",
+        "data": {
+          "title": "A Certain Scientific Super Godzilla",
+          "author": "Shi Guang Jun",
+          "description": "A small Godzilla travels through countless worlds.",
+          "image": "/cdn/series/super.jpg"
+        }
+      },
+      {
+        "id": 85723,
+        "raw_id": 89415,
+        "slug": "i-am-godzilla-infinite-intrusion",
+        "data": {
+          "title": "I am Godzilla: Infinite Intrusion",
+          "author": "Feng Ling Xia",
+          "image": "https://img.wtr-lab.com/cdn/series/intrusion.jpg"
+        }
+      }
+    ]
+  }
+}

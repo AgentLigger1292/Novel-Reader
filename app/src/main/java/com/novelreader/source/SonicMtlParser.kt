@@ -30,12 +30,20 @@ class SonicMtlParser(context: NovelLoaderContext) : WordPressNovelParser(
     ),
     pageSize = 12,
 ) {
+    override val genres = listOf(
+        "Action", "Adventure", "Comedy", "Drama", "Fantasy",
+        "Harem", "Martial Arts", "Mystery", "Romance", "Sci-fi", "Supernatural",
+    )
+
     override fun popularUrl(page: Int): String =
         if (page <= 1) "$domainUrl/novel/" else "$domainUrl/novel/page/$page/"
 
     override fun searchUrl(query: String, page: Int): String =
         if (page <= 1) "$domainUrl/?s=$query&post_type=wp-manga"
         else "$domainUrl/?s=$query&post_type=wp-manga&page=$page"
+
+    override fun genreUrl(genre: String, page: Int): String =
+        if (page <= 1) "$domainUrl/novel-genre/$genre/" else "$domainUrl/novel-genre/$genre/page/$page/"
 
     // popular lists render .page-item-detail, Madara search renders .c-tabs-item__content
     override val cardSelectors = listOf(

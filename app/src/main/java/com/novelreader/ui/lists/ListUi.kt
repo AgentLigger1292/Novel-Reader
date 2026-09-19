@@ -22,7 +22,12 @@ import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -89,7 +94,19 @@ private fun NovelCoverThumb(
 ) {
     val context = LocalContext.current
     val imageLoader = remember { CoverLoader.get(context) }
-    val model = remember(coverUrl) { CoverLoader.request(context, coverUrl) }
+    var model by remember(coverUrl) {
+        mutableStateOf<Any?>(CoverLoader.cachedFile(context, coverUrl))
+    }
+    LaunchedEffect(coverUrl) {
+        val cached = CoverLoader.cachedFile(context, coverUrl)
+        if (cached != null) {
+            model = cached
+        } else {
+            CoverLoader.request(context, coverUrl) {
+                model = CoverLoader.cachedFile(context, coverUrl)
+            }
+        }
+    }
 
     Box(
         modifier

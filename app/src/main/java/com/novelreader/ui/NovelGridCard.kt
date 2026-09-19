@@ -17,7 +17,12 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -39,8 +44,19 @@ fun NovelGridCard(
 ) {
     val context = LocalContext.current
     val imageLoader = remember { CoverLoader.get(context) }
-    // re-resolve model when prefetch writes cache (refreshKey)
-    val model = remember(coverUrl, refreshKey) { CoverLoader.request(context, coverUrl) }
+    var model by remember(coverUrl, refreshKey) {
+        mutableStateOf<Any?>(CoverLoader.cachedFile(context, coverUrl))
+    }
+    LaunchedEffect(coverUrl, refreshKey) {
+        val cached = CoverLoader.cachedFile(context, coverUrl)
+        if (cached != null) {
+            model = cached
+        } else {
+            CoverLoader.request(context, coverUrl) {
+                model = CoverLoader.cachedFile(context, coverUrl)
+            }
+        }
+    }
 
     Card(
         onClick = onClick,

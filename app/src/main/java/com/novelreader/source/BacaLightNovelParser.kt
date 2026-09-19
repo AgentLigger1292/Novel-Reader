@@ -20,12 +20,21 @@ class BacaLightNovelParser(context: NovelLoaderContext) : WordPressNovelParser(
     ),
     pageSize = 20,
 ) {
+    override val genres = listOf(
+        "Action", "Adventure", "Comedy", "Drama", "Fantasy",
+        "Harem", "Isekai", "Martial Arts", "Mystery", "Romance",
+        "Sci-fi", "Shounen", "Supernatural",
+    )
+
     override fun popularUrl(page: Int): String =
         if (page <= 1) "$domainUrl/series/" else "$domainUrl/series/page/$page/"
 
     override fun searchUrl(query: String, page: Int): String =
         if (page <= 1) "$domainUrl/?s=$query&post_type=wp-manga"
         else "$domainUrl/page/$page/?s=$query&post_type=wp-manga"
+
+    override fun genreUrl(genre: String, page: Int): String =
+        if (page <= 1) "$domainUrl/genres/$genre/" else "$domainUrl/genres/$genre/page/$page/"
 
     override val cardSelectors = listOf(
         "div.bsx",

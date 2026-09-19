@@ -18,6 +18,10 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -44,6 +48,7 @@ object CoverLoader {
     private const val TAG = "BLN"
     private const val UA =
         "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
+    private const val MAX_DOWNLOAD_RETRIES = 0
 
     private fun refererFor(imageUrl: String): String = when {
         imageUrl.contains("sakuranovel", ignoreCase = true) ||
@@ -56,8 +61,12 @@ object CoverLoader {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val main = Handler(Looper.getMainLooper())
     private val queue = Channel<Job>(Channel.UNLIMITED)
+    private val pendingUrls = CoverRequestDeduper()
     private val workerStarted = AtomicBoolean(false)
     private val webViewReady = AtomicBoolean(false)
+
+    private val _coverVersion = MutableStateFlow(0L)
+    val coverVersion: StateFlow<Long> = _coverVersion.asStateFlow()
 
     @Volatile private var coverWebView: WebView? = null
     @Volatile private var loader: ImageLoader? = null
@@ -65,7 +74,6 @@ object CoverLoader {
     private data class Job(
         val context: Context,
         val url: String,
-        val onDone: (() -> Unit)?,
     )
 
     fun get(context: Context): ImageLoader {
@@ -81,7 +89,24 @@ object CoverLoader {
         }
     }
 
-    fun request(context: Context, url: String?): Any? {
+    fun cachedFile(context: Context, url: String?): File? {
+        if (url != null && isLocalFile(url)) {
+            val f = File(url)
+            if (f.exists() && f.length() > 0) return f
+            return null
+        }
+        val u = normalize(url) ?: return null
+        return validCache(context, u)
+    }
+
+    fun clearQueue() {
+        while (true) {
+            val job = queue.tryReceive().getOrNull() ?: break
+            pendingUrls.remove(job.url)
+        }
+    }
+
+    fun request(context: Context, url: String?, onDone: (() -> Unit)? = null): Any? {
         // Local files (imported EPUB covers) are served directly as a File model.
         if (url != null && isLocalFile(url)) {
             val f = File(url)
@@ -90,7 +115,7 @@ object CoverLoader {
         }
         val u = normalize(url) ?: return null
         validCache(context, u)?.let { return it }
-        enqueue(context, u, null)
+        enqueue(context, u, onDone)
         return null
     }
 
@@ -130,8 +155,12 @@ object CoverLoader {
     private fun validCache(context: Context, url: String): File? {
         val f = cacheFile(context, url)
         if (!f.exists() || f.length() < 200) return null
-        val head = runCatching { f.inputStream().use { it.readNBytes(16) } }.getOrNull()
-        if (head != null && isImageBytes(head)) return f
+        val buf = ByteArray(16)
+        val read = runCatching {
+            f.inputStream().use { it.read(buf) }
+        }.getOrNull() ?: -1
+        if (read >= 8 && isImageBytes(buf)) return f
+        Log.w(TAG, "validCache failed magic check: ${f.name} len=${f.length()} read=$read buf=${buf.take(4).toList()}")
         f.delete()
         return null
     }
@@ -148,29 +177,42 @@ object CoverLoader {
     }
 
     private fun enqueue(context: Context, url: String, onDone: (() -> Unit)?) {
+        val accepted = pendingUrls.register(url, onDone)
         ensureWorker(context.applicationContext)
-        queue.trySend(Job(context.applicationContext, url, onDone))
+        if (!accepted) return
+        if (queue.trySend(Job(context.applicationContext, url)).isFailure) {
+            pendingUrls.complete(url).forEach { main.post(it) }
+        }
     }
 
     private fun ensureWorker(appContext: Context) {
         if (!workerStarted.compareAndSet(false, true)) return
         scope.launch {
-            if (!initWebView(appContext)) {
-                Log.e(TAG, "cover WebView init failed — covers disabled")
-                return@launch
+            while (!initWebView(appContext)) {
+                Log.e(TAG, "cover WebView init failed — retrying queued covers")
+                delay(1_000L)
             }
             for (job in queue) {
-                try {
-                    val ok = downloadByLoadUrl(job.context, job.url)
-                    Log.i(
-                        TAG,
-                        if (ok) "cover ok ${job.url.substringAfterLast('/')}"
-                        else "cover fail ${job.url.substringAfterLast('/')}",
-                    )
-                } catch (e: Exception) {
-                    Log.w(TAG, "cover err ${e.message}")
+                var ok = false
+                for (attempt in 0..MAX_DOWNLOAD_RETRIES) {
+                    if (attempt > 0) delay(250L * attempt)
+                    try {
+                        ok = downloadByLoadUrl(job.context, job.url)
+                    } catch (e: Exception) {
+                        Log.w(TAG, "cover err attempt=${attempt + 1}: ${e.message}")
+                    }
+                    if (ok) break
                 }
-                job.onDone?.let { main.post(it) }
+                Log.i(
+                    TAG,
+                    if (ok) "cover ok ${job.url.substringAfterLast('/')}"
+                        else "cover fail ${job.url.substringAfterLast('/')}",
+                )
+                if (ok) {
+                    _coverVersion.value++
+                }
+                val callbacks = pendingUrls.complete(job.url)
+                callbacks.forEach { callback -> main.post(callback) }
             }
         }
     }
@@ -298,9 +340,12 @@ object CoverLoader {
                               var w = el.naturalWidth || el.width;
                               var h = el.naturalHeight || el.height;
                               if (!w || !h) return 'WAIT';
+                              var scale = Math.min(1, 400 / w, 600 / h);
+                              var outW = Math.max(1, Math.round(w * scale));
+                              var outH = Math.max(1, Math.round(h * scale));
                               var c = document.createElement('canvas');
-                              c.width = w; c.height = h;
-                              c.getContext('2d').drawImage(el, 0, 0);
+                              c.width = outW; c.height = outH;
+                              c.getContext('2d').drawImage(el, 0, 0, outW, outH);
                               try { return c.toDataURL('image/png'); }
                               catch(e) { return 'ERR:tainted'; }
                             }
@@ -369,7 +414,7 @@ object CoverLoader {
             wv.loadUrl(url)
         }
 
-        val finished = latch.await(15, TimeUnit.SECONDS)
+        val finished = latch.await(6, TimeUnit.SECONDS)
         if (!finished) {
             main.post {
                 try {
@@ -383,8 +428,19 @@ object CoverLoader {
         }
         val bytes = bytesRef.get() ?: return false
         if (!isImageBytes(bytes) && bytes.size < 500) return false
-        out.writeBytes(bytes)
-        return true
+        val temp = File(out.parentFile, "${out.name}.tmp")
+        temp.writeBytes(bytes)
+        if (out.exists()) out.delete()
+        if (!temp.renameTo(out)) {
+            try {
+                temp.copyTo(out, overwrite = true)
+            } catch (_: Exception) {
+            }
+            temp.delete()
+        }
+        val written = out.exists() && out.length() >= 200
+        Log.i(TAG, "cover written ${out.absolutePath} len=${out.length()} ok=$written")
+        return written
     }
 
     private fun unwrap(json: String?): String {
@@ -413,14 +469,5 @@ object CoverLoader {
         return d.joinToString("") { "%02x".format(it) }
     }
 
-    private fun extOf(url: String): String {
-        val path = url.substringBefore('?').lowercase()
-        return when {
-            path.endsWith(".png") -> ".png"
-            path.endsWith(".webp") -> ".webp"
-            path.endsWith(".gif") -> ".gif"
-            path.endsWith(".jpg") || path.endsWith(".jpeg") -> ".jpg"
-            else -> ".png"
-        }
-    }
+    private fun extOf(url: String): String = ".png"
 }

@@ -24,7 +24,7 @@ import org.json.JSONObject
  *
  * Data sources:
  *  - Browse:   /_next/data/{buildId}/en/novel-list.json?page=N   (buildId read from /en HTML)
- *  - Search:   /api/search?q=...
+ *  - Search:   /_next/data/{buildId}/en/novel-finder.json?text=...&locale=en&page=N
  *  - Detail:   /_next/data/{buildId}/en/novel/{id}/{slug}.json
  *  - Chapters: /api/chapters/{id}?start=1&end={chapter_count}
  *  - Content:  POST /api/reader/get {translate:"ai",language:"en",raw_id,chapter_no,...}
@@ -81,31 +81,16 @@ class WtrLabParser(context: NovelLoaderContext) : PagedNovelParser(
         return id
     }
 
-    private fun parseSeries(arr: JSONArray): List<Novel> {
-        val out = ArrayList<Novel>()
-        for (i in 0 until arr.length()) {
-            val o = arr.optJSONObject(i) ?: continue
-            // URLs key off raw_id (the serie `id` returns a redirect with no `serie`).
-            val id = if (o.has("raw_id")) o.optLong("raw_id") else o.optLong("id")
-            val slug = o.optString("slug")
-            if (id <= 0 || !SLUG.matches(slug)) continue
-            val data = o.optJSONObject("data") ?: JSONObject()
-            out.add(
-                Novel(
-                    sourceId = info.id,
-                    path = "$id/$slug",
-                    title = data.optString("title").ifBlank { slug },
-                    coverUrl = data.optString("image").takeIf { it.isNotBlank() }?.let { absImg(it) },
-                    author = data.optString("author").takeIf { it.isNotBlank() },
-                    description = data.optString("description").takeIf { it.isNotBlank() },
-                ),
-            )
-        }
-        return out
-    }
+    private fun parseSeries(arr: JSONArray): List<Novel> =
+        parseSeries(arr, info.id, domainUrl, SLUG)
 
     private fun absImg(img: String): String =
         if (img.startsWith("http")) img else "$domainUrl${if (img.startsWith("/")) "" else "/"}$img"
+
+    override val genres = listOf(
+        "Action", "Adventure", "Comedy", "Drama", "Fantasy",
+        "Harem", "Martial Arts", "Mystery", "Romance", "Sci-fi", "Supernatural",
+    )
 
     override suspend fun getListPage(page: Int): List<Novel> {
         val url = "$domainUrl/_next/data/${buildId()}/en/novel-list.json?page=$page"
@@ -113,16 +98,15 @@ class WtrLabParser(context: NovelLoaderContext) : PagedNovelParser(
         return parseSeries(j.getJSONObject("pageProps").optJSONArray("series") ?: JSONArray())
     }
 
+    override suspend fun getGenrePage(genre: String, page: Int): List<Novel> {
+        val encoded = URLEncoder.encode(genre.lowercase().replace(" ", "-"), "UTF-8")
+        val url = "$domainUrl/_next/data/${buildId()}/en/novel-finder.json?genre=$encoded&locale=en&page=${page.coerceAtLeast(1)}"
+        return parseSearchResponse(JSONObject(get(url)), info.id, domainUrl)
+    }
+
     override suspend fun getSearchPage(query: String, page: Int): List<Novel> {
-        // The site's /api/search ignores `q` and returns the same ~10 default rows
-        // regardless of query — filter client-side like the other parsers do.
-        val url = "$domainUrl/api/search?q=${URLEncoder.encode(query, "UTF-8")}"
-        val j = JSONObject(get(url))
-        val lower = query.lowercase()
-        return parseSeries(j.optJSONArray("data") ?: JSONArray()).filter {
-            it.title.lowercase().contains(lower) ||
-                (it.author?.lowercase()?.contains(lower) == true)
-        }
+        val url = buildSearchUrl(domainUrl, buildId(), query, page)
+        return parseSearchResponse(JSONObject(get(url)), info.id, domainUrl)
     }
 
     override suspend fun getDetails(path: String): NovelDetail {
@@ -216,5 +200,44 @@ class WtrLabParser(context: NovelLoaderContext) : PagedNovelParser(
 
     companion object {
         private val SLUG = Regex("^[A-Za-z0-9_-]+$")
+
+        internal fun buildSearchUrl(domainUrl: String, buildId: String, query: String, page: Int): String =
+            "$domainUrl/_next/data/$buildId/en/novel-finder.json?text=" +
+                "${URLEncoder.encode(query, "UTF-8")}&locale=en&page=${page.coerceAtLeast(1)}"
+
+        internal fun parseSearchResponse(response: JSONObject, sourceId: String, domainUrl: String): List<Novel> {
+            val series = response.optJSONObject("pageProps")?.optJSONArray("series") ?: JSONArray()
+            return parseSeries(series, sourceId, domainUrl, SLUG)
+        }
+
+        private fun parseSeries(
+            arr: JSONArray,
+            sourceId: String,
+            domainUrl: String,
+            slugPattern: Regex,
+        ): List<Novel> {
+            val out = ArrayList<Novel>()
+            for (i in 0 until arr.length()) {
+                val o = arr.optJSONObject(i) ?: continue
+                // URLs key off raw_id (the serie `id` returns a redirect with no `serie`).
+                val id = if (o.has("raw_id")) o.optLong("raw_id") else o.optLong("id")
+                val slug = o.optString("slug")
+                if (id <= 0 || !slugPattern.matches(slug)) continue
+                val data = o.optJSONObject("data") ?: JSONObject()
+                out.add(
+                    Novel(
+                        sourceId = sourceId,
+                        path = "$id/$slug",
+                        title = data.optString("title").ifBlank { slug },
+                        coverUrl = data.optString("image").takeIf { it.isNotBlank() }?.let {
+                            if (it.startsWith("http")) it else "$domainUrl${if (it.startsWith("/")) "" else "/"}$it"
+                        },
+                        author = data.optString("author").takeIf { it.isNotBlank() },
+                        description = data.optString("description").takeIf { it.isNotBlank() },
+                    ),
+                )
+            }
+            return out
+        }
     }
 }

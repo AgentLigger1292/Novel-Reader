@@ -3,6 +3,7 @@ package com.novelreader.translate
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
+import okhttp3.FormBody
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -41,7 +42,9 @@ class AiTranslationApi(
         .build()
 
     init {
-        require(baseUrl.isValidHttpUrl()) { "Base URL tidak valid: $baseUrl" }
+        if (provider != PROVIDER_GOOGLE_MTL) {
+            require(baseUrl.isValidHttpUrl()) { "Base URL tidak valid: $baseUrl" }
+        }
     }
 
     // ---- non-streaming (used by tests, fallback) ----
@@ -53,6 +56,9 @@ class AiTranslationApi(
     suspend fun translateBatch(texts: List<String>, targetLang: String): List<String> =
         withContext(Dispatchers.IO) {
             if (texts.isEmpty()) return@withContext emptyList()
+            if (provider == PROVIDER_GOOGLE_MTL) {
+                return@withContext translateGoogleMtl(texts, targetLang)
+            }
             val userContent = texts.mapIndexed { i, t -> "[${i + 1}] $t" }.joinToString("\n")
             val sp = systemPrompt(targetLang)
             val request = when (provider) {
@@ -77,6 +83,9 @@ class AiTranslationApi(
         onDelta: (String) -> Unit,
     ): String = withContext(Dispatchers.IO) {
         if (texts.isEmpty()) return@withContext ""
+        if (provider == PROVIDER_GOOGLE_MTL) {
+            return@withContext streamGoogleMtl(texts, targetLang, onDelta)
+        }
         val userContent = texts.mapIndexed { i, t -> "[${i + 1}] $t" }.joinToString("\n")
         val sp = systemPrompt(targetLang)
         val request = when (provider) {
@@ -267,6 +276,54 @@ class AiTranslationApi(
         return content
     }
 
+    // ---- Google Machine Translation (free, no API key required) ----
+
+    private fun translateGoogleMtl(texts: List<String>, targetLang: String): List<String> {
+        val raw = streamGoogleMtl(texts, targetLang) {}
+        return alignResults(raw, texts.size)
+    }
+
+    private fun streamGoogleMtl(
+        texts: List<String>,
+        targetLang: String,
+        onDelta: (String) -> Unit,
+    ): String {
+        val full = StringBuilder()
+        val chunkSize = 15
+        for (chunkIndex in texts.indices step chunkSize) {
+            val chunk = texts.subList(chunkIndex, minOf(chunkIndex + chunkSize, texts.size))
+            val chunkText = chunk.mapIndexed { i, t ->
+                "[${chunkIndex + i + 1}] $t"
+            }.joinToString("\n")
+
+            val body = FormBody.Builder()
+                .add("client", "gtx")
+                .add("sl", "auto")
+                .add("tl", targetLang)
+                .add("dt", "t")
+                .add("q", chunkText)
+                .build()
+
+            val request = Request.Builder()
+                .url("https://translate.googleapis.com/translate_a/single")
+                .post(body)
+                .header("User-Agent", "Mozilla/5.0 (Linux; Android 13)")
+                .build()
+
+            client.newCall(request).execute().use { resp ->
+                if (!resp.isSuccessful) {
+                    throw TranslationException("Google MTL HTTP ${resp.code}", resp.code)
+                }
+                val jsonStr = resp.body?.string().orEmpty()
+                val translated = parseGoogleMtlResponse(jsonStr)
+                val delta = translated + "\n"
+                full.append(delta)
+                onDelta(delta)
+            }
+        }
+        return full.toString()
+    }
+
     // ---- error parsing + validation ----
 
     private fun parseErrorMessage(body: String): String? = try {
@@ -278,6 +335,17 @@ class AiTranslationApi(
     companion object {
         const val PROVIDER_GEMINI = "gemini"
         const val PROVIDER_OPENAI = "openai"
+        const val PROVIDER_GOOGLE_MTL = "google_mtl"
+
+        internal fun parseGoogleMtlResponse(jsonStr: String): String {
+            val arr = runCatching { JSONArray(jsonStr).optJSONArray(0) }.getOrNull() ?: return ""
+            val sb = StringBuilder()
+            for (i in 0 until arr.length()) {
+                val segment = arr.optJSONArray(i)?.optString(0) ?: ""
+                sb.append(segment)
+            }
+            return sb.toString()
+        }
 
         private val JSON_MEDIA = "application/json; charset=utf-8".toMediaType()
 

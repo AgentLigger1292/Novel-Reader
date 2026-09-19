@@ -23,9 +23,28 @@ abstract class PagedNovelParser(
         }
     }
 
+    override suspend fun getPopular(page: Int): List<Novel> =
+        getList(offset = pageOffset(page, pageSize), query = null)
+
+    override suspend fun search(query: String, page: Int): List<Novel> =
+        getList(offset = pageOffset(page, pageSize), query = query)
+
+    override suspend fun getByGenre(genre: String, page: Int): List<Novel> = withContext(Dispatchers.IO) {
+        if (genre.isBlank()) getPopular(page)
+        else getGenrePage(genre.trim(), page)
+    }
+
+    companion object {
+        internal fun pageOffset(page: Int, pageSize: Int): Int =
+            (page - 1).coerceAtLeast(0) * pageSize
+    }
+
     /** Fetch a single page of popular/latest novels. */
     abstract suspend fun getListPage(page: Int): List<Novel>
 
     /** Fetch a single page of search results for [query]. */
     abstract suspend fun getSearchPage(query: String, page: Int): List<Novel>
+
+    /** Fetch a single page of novels filtered by [genre]. */
+    open suspend fun getGenrePage(genre: String, page: Int): List<Novel> = emptyList()
 }

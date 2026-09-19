@@ -49,7 +49,9 @@ class ReaderViewModel(private val container: AppContainer) : ViewModel() {
 
     private var translateJob: Job? = null
 
-    fun aiConfigured(): Boolean = container.settings.aiKey.isNotBlank()
+    fun aiConfigured(): Boolean =
+        container.settings.aiProvider == AiTranslationApi.PROVIDER_GOOGLE_MTL ||
+            container.settings.aiKey.isNotBlank()
 
     /**
      * Translate [paragraphs] with live streaming: the Room cache is served
@@ -66,14 +68,20 @@ class ReaderViewModel(private val container: AppContainer) : ViewModel() {
     ) {
         if (_aiProgress.value.running) return
         val s = container.settings
+        val isMtl = s.aiProvider == AiTranslationApi.PROVIDER_GOOGLE_MTL
+        val baseUrl = when {
+            isMtl -> "https://translate.googleapis.com"
+            s.aiProvider == AiTranslationApi.PROVIDER_GEMINI -> GEMINI_BASE
+            else -> s.aiBaseUrl
+        }
+        val model = if (isMtl) "google-mtl" else s.aiModel
         val api = AiTranslationApi(
             provider = s.aiProvider,
-            baseUrl = if (s.aiProvider == AiTranslationApi.PROVIDER_GEMINI) GEMINI_BASE else s.aiBaseUrl,
+            baseUrl = baseUrl,
             apiKey = s.aiKey,
-            model = s.aiModel,
+            model = model,
         )
         val lang = s.aiTargetLang
-        val model = s.aiModel
         translateJob?.cancel()
         translateJob = viewModelScope.launch {
             _aiProgress.value = AiProgress(running = true)

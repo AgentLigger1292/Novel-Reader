@@ -26,11 +26,22 @@ class MistmintHavenParser(context: NovelLoaderContext) : PagedNovelParser(
 ) {
     private val apiBase = "https://api.mistminthaven.com/api"
 
+    override val genres = listOf(
+        "Romance", "Fantasy", "Action", "Drama", "Comedy", "Sci-fi", "Adventure",
+    )
+
     // skipPage is an ITEM offset on this API (verified against the live site:
     // /api/novel?keyword=x&limit=8&skipPage=0), not a page number.
     override suspend fun getListPage(page: Int): List<Novel> {
         val skip = (page - 1).coerceAtLeast(0) * pageSize
         val json = context.httpGet("$apiBase/novel?limit=$pageSize&skipPage=$skip&category=all")
+        return MistmintParse.parseNovelList(json)
+    }
+
+    override suspend fun getGenrePage(genre: String, page: Int): List<Novel> {
+        val skip = (page - 1).coerceAtLeast(0) * pageSize
+        val cat = java.net.URLEncoder.encode(genre.lowercase(), "UTF-8")
+        val json = context.httpGet("$apiBase/novel?limit=$pageSize&skipPage=$skip&category=$cat")
         return MistmintParse.parseNovelList(json)
     }
 

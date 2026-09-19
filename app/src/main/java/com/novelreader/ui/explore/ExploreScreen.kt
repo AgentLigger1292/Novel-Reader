@@ -11,7 +11,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items as lazyRowItems
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material.icons.Icons
@@ -20,6 +21,7 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -28,7 +30,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
@@ -46,8 +47,7 @@ import kotlinx.coroutines.launch
 import android.widget.Toast
 
 /**
- * Kotatsu Explore screen: source tile grid + paged popular/search grid with
- * infinite scroll load-more.
+ * Kotatsu Explore screen: source tile grid + automatically loaded popular/search grid.
  */
 @Composable
 fun ExploreScreen(
@@ -58,7 +58,6 @@ fun ExploreScreen(
 ) {
     val state by vm.state.collectAsState()
     var coverTick by remember { mutableIntStateOf(0) }
-    val gridState = rememberLazyGridState()
     val source = container.source(state.sourceId)
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -75,8 +74,7 @@ fun ExploreScreen(
         }
     }
     val sourceItems = remember {
-        container.sourcesRepository.all
-            .filter { it.id != "dummy" && it.id != "local_epub" }
+        container.sourcesRepository.catalog
             .map { SourceUiItem(it.id, it.name, it.siteUrl) }
     }
 
@@ -84,18 +82,6 @@ fun ExploreScreen(
     val cfTick by container.cfClearedTick.collectAsState()
     LaunchedEffect(cfTick) {
         vm.onCfTick(cfTick)
-    }
-
-    // infinite scroll: when near the bottom, ask for the next page
-    val nearEnd by remember {
-        derivedStateOf {
-            val info = gridState.layoutInfo
-            val last = info.visibleItemsInfo.lastOrNull()?.index ?: 0
-            last >= info.totalItemsCount - 6
-        }
-    }
-    LaunchedEffect(nearEnd, state.novels.size) {
-        if (nearEnd && state.novels.isNotEmpty()) vm.loadMore()
     }
 
     Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -133,6 +119,28 @@ fun ExploreScreen(
             label = { Text("Cari novel") },
             placeholder = { Text("min. 2 huruf…") },
         )
+        if (source.genres.isNotEmpty() && state.query.isBlank()) {
+            LazyRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                contentPadding = PaddingValues(vertical = 2.dp),
+            ) {
+                item(key = "genre_all") {
+                    FilterChip(
+                        selected = state.selectedGenre == null,
+                        onClick = { vm.selectGenre(null) },
+                        label = { Text("Semua") },
+                    )
+                }
+                lazyRowItems(source.genres, key = { "genre_$it" }) { g ->
+                    FilterChip(
+                        selected = state.selectedGenre == g,
+                        onClick = { vm.selectGenre(if (state.selectedGenre == g) null else g) },
+                        label = { Text(g) },
+                    )
+                }
+            }
+        }
         state.error?.let { err ->
             Text(err, color = MaterialTheme.colorScheme.error)
             if (source.siteUrl != null) {
@@ -143,14 +151,13 @@ fun ExploreScreen(
         }
         Box(Modifier.weight(1f)) {
             LazyVerticalGrid(
-                columns = GridCells.Fixed(3),
-                state = gridState,
+                columns = GridCells.Adaptive(minSize = 130.dp),
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(vertical = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                items(state.novels, key = { it.path }) { n ->
+                items(state.novels, key = { "${it.sourceId}|${it.path}" }) { n ->
                     NovelGridCard(
                         title = n.title,
                         coverUrl = n.coverUrl,
@@ -159,7 +166,7 @@ fun ExploreScreen(
                     )
                 }
                 if (state.loading) {
-                    item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(3) }) {
+                    item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
                         Box(
                             Modifier.fillMaxWidth().padding(16.dp),
                             contentAlignment = Alignment.Center,

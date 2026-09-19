@@ -23,6 +23,7 @@ abstract class WordPressNovelParser(
     // Configuration hooks
     protected abstract fun popularUrl(page: Int): String
     protected abstract fun searchUrl(query: String, page: Int): String
+    protected open fun genreUrl(genre: String, page: Int): String? = null
 
     protected abstract val cardSelectors: List<String>
     protected abstract val cardLinkSelectors: String
@@ -74,6 +75,15 @@ abstract class WordPressNovelParser(
                 (it.author?.lowercase()?.contains(lower) == true)
         }
         return if (filtered.isNotEmpty()) filtered else novels
+    }
+
+    override suspend fun getGenrePage(genre: String, page: Int): List<Novel> {
+        val url = genreUrl(java.net.URLEncoder.encode(genre.lowercase().replace(' ', '-'), "UTF-8"), page)
+            ?: return emptyList()
+        val doc = context.httpGetDocument(url, domainUrl)
+        return WpParse.parseNovelCards(
+            doc, info.id, domainUrl, cardSelectors, cardLinkSelectors, cardFallbackLinkSelector,
+        )
     }
 
     override suspend fun getDetails(path: String): NovelDetail {
