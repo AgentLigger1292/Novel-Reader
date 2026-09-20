@@ -62,4 +62,11 @@ class WoopReadParserTest {
         assertEquals("Chapter 3", chapters[2].name)
         assertEquals(3f, chapters[2].number)
     }
+
+    @Test
+    fun extractNovelId_extractsFromRawFlightData() {
+        val flightHtml = """self.__next_f.push([1,"...image\":\"https://example.com/cover.webp\",\"isbn\":\"cm3ih8avb01dlz5hncciegbxu\",\"genre\":\"Fantasy\"..."])"""
+        val id = WoopReadParser.extractNovelId(flightHtml, null)
+        assertEquals("cm3ih8avb01dlz5hncciegbxu", id)
+    }
 }

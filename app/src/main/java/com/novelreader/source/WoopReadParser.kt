@@ -82,9 +82,9 @@ class WoopReadParser(context: NovelLoaderContext) : PagedNovelParser(
             description = desc,
         )
 
-        val isbn = jsonLd?.optString("isbn")?.ifBlank { null }
-        val chapters = if (!isbn.isNullOrBlank()) {
-            val jsonStr = context.httpGet("$domainUrl/api/novels/$isbn/chapters", "$domainUrl/series/$slug")
+        val novelId = extractNovelId(doc.html(), jsonLd)
+        val chapters = if (!novelId.isNullOrBlank()) {
+            val jsonStr = context.httpGet("$domainUrl/api/novels/$novelId/chapters", "$domainUrl/series/$slug")
             parseChapters(slug, jsonStr)
         } else {
             // fallback: parse chapter links directly from page
@@ -159,6 +159,14 @@ class WoopReadParser(context: NovelLoaderContext) : PagedNovelParser(
                 if (match.startsWith("[")) JSONArray(match).optJSONObject(0)
                 else JSONObject(match)
             }.getOrNull()
+        }
+
+        private val NOVEL_ID_REGEX = Regex("""isbn[^\w]+([A-Za-z0-9_-]{15,})""")
+
+        internal fun extractNovelId(html: String, jsonLd: JSONObject? = null): String? {
+            val fromJsonLd = jsonLd?.optString("isbn")?.ifBlank { null }
+            if (!fromJsonLd.isNullOrBlank()) return fromJsonLd
+            return NOVEL_ID_REGEX.find(html)?.groupValues?.get(1)
         }
 
         internal fun parseChapters(slug: String, jsonStr: String): List<Chapter> {
