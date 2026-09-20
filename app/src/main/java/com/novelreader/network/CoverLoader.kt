@@ -3,6 +3,7 @@ package com.novelreader.network
 import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.os.Handler
 import android.os.Looper
 import android.util.Base64
@@ -23,11 +24,13 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import okhttp3.Request
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.net.URI
 import java.net.URLEncoder
 import java.security.MessageDigest
+import kotlin.math.roundToInt
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
@@ -51,9 +54,18 @@ object CoverLoader {
     private const val MAX_DOWNLOAD_RETRIES = 0
 
     private fun refererFor(imageUrl: String): String = when {
+        imageUrl.contains("woopread", ignoreCase = true) ||
+            imageUrl.contains("imgcdn.woopread") ->
+            "https://woopread.com/"
+        imageUrl.contains("wtr-lab", ignoreCase = true) ->
+            "https://wtr-lab.com/"
         imageUrl.contains("sakuranovel", ignoreCase = true) ||
             imageUrl.contains("i0.wp.com") && imageUrl.contains("sakura") ->
             "https://sakuranovel.id/"
+        imageUrl.contains("sonicmtl", ignoreCase = true) ->
+            "https://www.sonicmtl.com/"
+        imageUrl.contains("mistmint", ignoreCase = true) ->
+            "https://mistminthaven.com/"
         imageUrl.contains("i0.wp.com") -> "https://sakuranovel.id/"
         else -> "https://bacalightnovel.co/"
     }
@@ -188,20 +200,28 @@ object CoverLoader {
     private fun ensureWorker(appContext: Context) {
         if (!workerStarted.compareAndSet(false, true)) return
         scope.launch {
-            while (!initWebView(appContext)) {
-                Log.e(TAG, "cover WebView init failed — retrying queued covers")
-                delay(1_000L)
-            }
             for (job in queue) {
                 var ok = false
-                for (attempt in 0..MAX_DOWNLOAD_RETRIES) {
-                    if (attempt > 0) delay(250L * attempt)
-                    try {
-                        ok = downloadByLoadUrl(job.context, job.url)
-                    } catch (e: Exception) {
-                        Log.w(TAG, "cover err attempt=${attempt + 1}: ${e.message}")
+                // Fast path: direct OkHttp download (20ms) for CDNs without Cloudflare challenge
+                try {
+                    ok = downloadByOkHttp(job.context, job.url)
+                } catch (e: Exception) {
+                    Log.w(TAG, "cover okhttp err: ${e.message}")
+                }
+                if (!ok) {
+                    // Fall back to headless WebView for Cloudflare-protected images (e.g. sakuranovel)
+                    if (!webViewReady.get()) {
+                        initWebView(appContext)
                     }
-                    if (ok) break
+                    for (attempt in 0..MAX_DOWNLOAD_RETRIES) {
+                        if (attempt > 0) delay(250L * attempt)
+                        try {
+                            ok = downloadByLoadUrl(job.context, job.url)
+                        } catch (e: Exception) {
+                            Log.w(TAG, "cover err attempt=${attempt + 1}: ${e.message}")
+                        }
+                        if (ok) break
+                    }
                 }
                 Log.i(
                     TAG,
@@ -214,6 +234,49 @@ object CoverLoader {
                 val callbacks = pendingUrls.complete(job.url)
                 callbacks.forEach { callback -> main.post(callback) }
             }
+        }
+    }
+
+    private fun downloadByOkHttp(context: Context, url: String): Boolean {
+        if (validCache(context, url) != null) return true
+        val out = cacheFile(context, url)
+        val referer = refererFor(url)
+        val req = Request.Builder()
+            .url(url)
+            .header("User-Agent", UA)
+            .header("Referer", referer)
+            .header("Accept", "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8")
+            .build()
+        return try {
+            HttpClient.sharedClient.newCall(req).execute().use { res ->
+                if (!res.isSuccessful) return false
+                val bytes = res.body?.bytes() ?: return false
+                if (bytes.size < 200 || !isImageBytes(bytes)) return false
+
+                val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return false
+                val scale = minOf(1f, 400f / bmp.width, 600f / bmp.height)
+                val outW = maxOf(1, (bmp.width * scale).roundToInt())
+                val outH = maxOf(1, (bmp.height * scale).roundToInt())
+                val scaled = if (scale < 1f) Bitmap.createScaledBitmap(bmp, outW, outH, true) else bmp
+                val bos = ByteArrayOutputStream()
+                scaled.compress(Bitmap.CompressFormat.PNG, 90, bos)
+                if (scaled !== bmp) scaled.recycle()
+                bmp.recycle()
+                val pngBytes = bos.toByteArray()
+
+                val temp = File(out.parentFile, "${out.name}.tmp")
+                temp.writeBytes(pngBytes)
+                if (out.exists()) out.delete()
+                if (!temp.renameTo(out)) {
+                    try {
+                        temp.copyTo(out, overwrite = true)
+                    } catch (_: Exception) {}
+                    temp.delete()
+                }
+                out.exists() && out.length() >= 200
+            }
+        } catch (_: Exception) {
+            false
         }
     }
 

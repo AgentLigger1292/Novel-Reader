@@ -289,6 +289,7 @@ class AiTranslationApi(
         onDelta: (String) -> Unit,
     ): String {
         val full = StringBuilder()
+        val tl = normalizeGoogleLang(targetLang)
         val chunkSize = 15
         for (chunkIndex in texts.indices step chunkSize) {
             val chunk = texts.subList(chunkIndex, minOf(chunkIndex + chunkSize, texts.size))
@@ -299,7 +300,7 @@ class AiTranslationApi(
             val body = FormBody.Builder()
                 .add("client", "gtx")
                 .add("sl", "auto")
-                .add("tl", targetLang)
+                .add("tl", tl)
                 .add("dt", "t")
                 .add("q", chunkText)
                 .build()
@@ -312,10 +313,13 @@ class AiTranslationApi(
 
             client.newCall(request).execute().use { resp ->
                 if (!resp.isSuccessful) {
-                    throw TranslationException("Google MTL HTTP ${resp.code}", resp.code)
+                    val body = resp.body?.string().orEmpty()
+                    android.util.Log.w("BLN", "Google MTL HTTP ${resp.code}: $body")
+                    throw TranslationException("Google MTL HTTP ${resp.code}: ${body.take(100)}", resp.code)
                 }
                 val jsonStr = resp.body?.string().orEmpty()
                 val translated = parseGoogleMtlResponse(jsonStr)
+                android.util.Log.i("BLN", "Google MTL chunk done len=${translated.length}: ${translated.take(60)}")
                 val delta = translated + "\n"
                 full.append(delta)
                 onDelta(delta)
@@ -336,6 +340,24 @@ class AiTranslationApi(
         const val PROVIDER_GEMINI = "gemini"
         const val PROVIDER_OPENAI = "openai"
         const val PROVIDER_GOOGLE_MTL = "google_mtl"
+
+        internal fun normalizeGoogleLang(lang: String): String {
+            val l = lang.trim().lowercase()
+            return when {
+                l == "indonesian" || l == "indonesia" || l == "id" -> "id"
+                l == "english" || l == "inggris" || l == "en" -> "en"
+                l == "japanese" || l == "jepang" || l == "ja" -> "ja"
+                l == "korean" || l == "korea" || l == "ko" -> "ko"
+                l == "chinese" || l == "mandarin" || l == "zh" || l == "zh-cn" -> "zh-CN"
+                l == "spanish" || l == "spanyol" || l == "es" -> "es"
+                l == "french" || l == "prancis" || l == "fr" -> "fr"
+                l == "german" || l == "jerman" || l == "de" -> "de"
+                l == "russian" || l == "rusia" || l == "ru" -> "ru"
+                l == "arabic" || l == "arab" || l == "ar" -> "ar"
+                l.length in 2..5 -> l
+                else -> "id"
+            }
+        }
 
         internal fun parseGoogleMtlResponse(jsonStr: String): String {
             val arr = runCatching { JSONArray(jsonStr).optJSONArray(0) }.getOrNull() ?: return ""

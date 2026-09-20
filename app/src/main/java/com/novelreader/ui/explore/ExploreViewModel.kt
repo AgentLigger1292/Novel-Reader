@@ -92,6 +92,7 @@ class ExploreViewModel(private val container: AppContainer) : ViewModel() {
             novels = emptyList(),
             endReached = false,
             loading = false,
+            error = null,
         )
         loadMore()
     }

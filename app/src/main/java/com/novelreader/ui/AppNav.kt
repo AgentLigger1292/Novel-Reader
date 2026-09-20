@@ -30,8 +30,23 @@ import java.net.URLDecoder
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 
-private fun enc(s: String) = URLEncoder.encode(s, StandardCharsets.UTF_8.toString())
-private fun dec(s: String) = URLDecoder.decode(s, StandardCharsets.UTF_8.toString())
+private fun enc(s: String): String =
+    android.util.Base64.encodeToString(
+        s.toByteArray(StandardCharsets.UTF_8),
+        android.util.Base64.URL_SAFE or android.util.Base64.NO_WRAP or android.util.Base64.NO_PADDING,
+    )
+
+private fun dec(s: String): String = try {
+    String(
+        android.util.Base64.decode(
+            s,
+            android.util.Base64.URL_SAFE or android.util.Base64.NO_WRAP or android.util.Base64.NO_PADDING,
+        ),
+        StandardCharsets.UTF_8,
+    )
+} catch (_: Exception) {
+    URLDecoder.decode(s, StandardCharsets.UTF_8.toString())
+}
 
 /** Kotatsu NavItem equivalent: FEED, HISTORY, FAVOURITES, EXPLORE. */
 private data class NavItem(

@@ -204,4 +204,14 @@ class AiTranslationApiTest {
         )
         assertNotNull(api)
     }
+
+    @Test
+    fun normalizeGoogleLang_maps_names_to_iso_codes() {
+        assertEquals("id", AiTranslationApi.normalizeGoogleLang("Indonesian"))
+        assertEquals("id", AiTranslationApi.normalizeGoogleLang("indonesia"))
+        assertEquals("id", AiTranslationApi.normalizeGoogleLang("id"))
+        assertEquals("en", AiTranslationApi.normalizeGoogleLang("English"))
+        assertEquals("ja", AiTranslationApi.normalizeGoogleLang("Japanese"))
+        assertEquals("ko", AiTranslationApi.normalizeGoogleLang("Korean"))
+    }
 }

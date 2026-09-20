@@ -51,9 +51,18 @@ class NovelLoaderContext(val context: Context) {
         return try {
             httpGetWithRetry(req, url)
         } catch (e: CfChallengeException) {
-            SessionWebView.getHtml(url)
+            if (SessionWebView.webViewOrNull() != null) {
+                SessionWebView.getHtml(url)
+            } else {
+                throw e
+            }
         } catch (e: Exception) {
-            SessionWebView.getHtml(url)
+            android.util.Log.w("BLN", "httpGet fail ${e.message} for $url", e)
+            if (SessionWebView.webViewOrNull() != null) {
+                SessionWebView.getHtml(url)
+            } else {
+                throw e
+            }
         }
     }
 
@@ -65,13 +74,14 @@ class NovelLoaderContext(val context: Context) {
             try {
                 httpClient.newCall(req).execute().use { res ->
                     val body = res.body?.string().orEmpty()
+                    android.util.Log.i("BLN", "httpGet ${res.code} len=${body.length} url=$url")
                     if (looksLikeCf(res.code, body)) {
                         throw CfChallengeException(hostOf(url))
                     }
                     if ((res.code == 429 || res.code >= 500) && attempt < MAX_RETRIES) {
                         throw RetryableHttpException(res.code)
                     }
-                    if (!res.isSuccessful) throw IllegalStateException("HTTP ${res.code}")
+                    if (!res.isSuccessful) throw IllegalStateException("HTTP ${res.code} for $url")
                     return body
                 }
             } catch (e: RetryableHttpException) {

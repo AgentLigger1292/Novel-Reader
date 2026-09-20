@@ -33,11 +33,19 @@ class HttpClient(context: Context) {
             Log.i(TAG, "getHtml OkHttp fast-path success $url len=${html.length}")
             html
         } catch (e: CfChallengeException) {
-            Log.i(TAG, "OkHttp hit CF challenge, falling back to SessionWebView for $url")
-            SessionWebView.getHtml(url)
+            if (SessionWebView.webViewOrNull() != null) {
+                Log.i(TAG, "OkHttp hit CF challenge, falling back to SessionWebView for $url")
+                SessionWebView.getHtml(url)
+            } else {
+                throw e
+            }
         } catch (e: Exception) {
-            Log.w(TAG, "OkHttp fail ${e.message}, fallback to SessionWebView for $url")
-            SessionWebView.getHtml(url)
+            Log.w(TAG, "OkHttp fail ${e.message}, fallback to SessionWebView for $url", e)
+            if (SessionWebView.webViewOrNull() != null) {
+                SessionWebView.getHtml(url)
+            } else {
+                throw e
+            }
         }
     }
 

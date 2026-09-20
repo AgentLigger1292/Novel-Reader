@@ -82,6 +82,7 @@ class ReaderViewModel(private val container: AppContainer) : ViewModel() {
             model = model,
         )
         val lang = s.aiTargetLang
+        android.util.Log.i("BLN", "ReaderViewModel translate: isMtl=$isMtl provider=${s.aiProvider} lang=$lang paras=${paragraphs.size}")
         translateJob?.cancel()
         translateJob = viewModelScope.launch {
             _aiProgress.value = AiProgress(running = true)

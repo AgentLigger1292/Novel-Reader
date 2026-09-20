@@ -788,7 +788,10 @@ private fun AiTranslateSheet(
                 ).forEach { (id, label) ->
                     val selected = provider == id
                     OutlinedButton(
-                        onClick = { provider = id; save() },
+                        onClick = {
+                            provider = id
+                            settings.aiProvider = id
+                        },
                         shape = RoundedCornerShape(10.dp),
                         modifier = Modifier.weight(1f),
                         border = androidx.compose.foundation.BorderStroke(
@@ -898,7 +901,10 @@ private fun AiTranslateSheet(
                 }
             } else {
                 Button(
-                    onClick = onTranslate,
+                    onClick = {
+                        save()
+                        onTranslate()
+                    },
                     enabled = provider == com.novelreader.translate.AiTranslationApi.PROVIDER_GOOGLE_MTL || apiKey.isNotBlank(),
                     modifier = Modifier.fillMaxWidth(),
                 ) {
